@@ -8,4 +8,6 @@ proxy/node_modules
 frontend/dist
 proxy/dist
 backend/dist
+backend/workspaces/
+backend/var/
 *.tsbuildinfo

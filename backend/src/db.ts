@@ -3,6 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
+import {
+  ensureWorkspaceDirectory,
+  removeWorkspaceDirectory,
+  getWorkspaceRoot
+} from './workspaces';
 
 export type SessionRecord = {
   id: string;
@@ -28,6 +33,7 @@ const dataDir = process.env.BACKEND_DATA_DIR
   : defaultDataDir;
 
 fs.mkdirSync(dataDir, { recursive: true });
+fs.mkdirSync(getWorkspaceRoot(), { recursive: true });
 
 const databasePath = path.join(dataDir, 'chat.db');
 const db = new Database(databasePath);
@@ -165,6 +171,8 @@ export function createSession(title: string): SessionRecord {
     updatedAt: record.updatedAt
   });
 
+  ensureWorkspaceDirectory(record.id);
+
   return record;
 }
 
@@ -203,7 +211,11 @@ export function updateSessionThreadId(
 
 export function deleteSession(id: string): boolean {
   const result = deleteSessionStmt.run({ id });
-  return result.changes > 0;
+  const deleted = result.changes > 0;
+  if (deleted) {
+    removeWorkspaceDirectory(id);
+  }
+  return deleted;
 }
 
 export function addMessage(

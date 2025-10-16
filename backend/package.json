@@ -10,15 +10,16 @@
     "start": "npm run build && node dist/index.js"
   },
   "dependencies": {
+    "@openai/codex-sdk": "file:../../../../../../../root/tmp/codex/sdk/typescript/openai-codex-sdk-0.0.0-dev.tgz",
     "better-sqlite3": "^9.6.0",
     "express": "^4.19.2",
     "uuid": "^9.0.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.30",
-    "@types/better-sqlite3": "^7.6.9",
     "@types/uuid": "^9.0.7",
     "tsx": "^4.7.2",
     "typescript": "^5.4.5"

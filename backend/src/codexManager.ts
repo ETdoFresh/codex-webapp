@@ -3,17 +3,18 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SessionRecord } from './db';
+import { ensureWorkspaceDirectory } from './workspaces';
 
 type ThreadCacheEntry = {
   thread: Thread;
 };
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(dirname, '..');
 
 const require = createRequire(import.meta.url);
 
-let CodexClass: typeof Codex | null = null;
+let CodexClass: typeof Codex | null | undefined;
+let codexLoadError: Error | null = null;
 
 const codexOptions = {
   ...(process.env.CODEX_API_KEY ? { apiKey: process.env.CODEX_API_KEY } : {}),
@@ -21,7 +22,6 @@ const codexOptions = {
   ...(process.env.CODEX_PATH ? { codexPathOverride: process.env.CODEX_PATH } : {})
 } as const;
 
-const defaultWorkingDirectory = process.env.CODEX_WORKDIR ?? projectRoot;
 const sandboxMode =
   (process.env.CODEX_SANDBOX_MODE as
     | 'read-only'
@@ -30,12 +30,31 @@ const sandboxMode =
     | undefined) ?? 'workspace-write';
 
 class CodexManager {
-  private readonly codex: Codex;
+  private codexInstance: Codex | null = null;
   private readonly threads: Map<string, ThreadCacheEntry>;
 
   constructor() {
-    this.codex = new (getCodexClass())(codexOptions);
     this.threads = new Map();
+  }
+
+  private getCodex(): Codex {
+    if (this.codexInstance) {
+      return this.codexInstance;
+    }
+
+    const CodexCtor = loadCodexClass();
+    if (!CodexCtor) {
+      const errorMessage =
+        'Codex SDK is not installed. Build the SDK from https://github.com/openai/codex and install it into backend/node_modules, or set CODEX_PATH to a codex binary.';
+      const underlying = codexLoadError;
+      const message = underlying ? `${errorMessage}\nOriginal error: ${underlying.message}` : errorMessage;
+      const error = new Error(message);
+      error.name = 'CodexMissingError';
+      throw error;
+    }
+
+    this.codexInstance = new CodexCtor(codexOptions);
+    return this.codexInstance;
   }
 
   private setThread(sessionId: string, thread: Thread) {
@@ -46,10 +65,10 @@ class CodexManager {
     return this.threads.get(sessionId)?.thread ?? null;
   }
 
-  private createThreadOptions() {
+  private createThreadOptions(workspaceDirectory: string) {
     return {
       sandboxMode,
-      workingDirectory: defaultWorkingDirectory,
+      workingDirectory: workspaceDirectory,
       skipGitRepoCheck: true,
       ...(process.env.CODEX_MODEL ? { model: process.env.CODEX_MODEL } : {})
     };
@@ -61,11 +80,16 @@ class CodexManager {
       return cached;
     }
 
+    const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+
     let thread: Thread;
     if (session.codexThreadId) {
-      thread = this.codex.resumeThread(session.codexThreadId, this.createThreadOptions());
+      thread = this.getCodex().resumeThread(
+        session.codexThreadId,
+        this.createThreadOptions(workspaceDirectory)
+      );
     } else {
-      thread = this.codex.startThread(this.createThreadOptions());
+      thread = this.getCodex().startThread(this.createThreadOptions(workspaceDirectory));
     }
 
     this.setThread(session.id, thread);
@@ -88,20 +112,19 @@ class CodexManager {
 
 export const codexManager = new CodexManager();
 
-function getCodexClass(): typeof Codex {
-  if (CodexClass) {
+function loadCodexClass(): typeof Codex | null {
+  if (CodexClass !== undefined) {
     return CodexClass;
   }
 
   try {
     const mod = require('@openai/codex-sdk') as { Codex: typeof Codex };
     CodexClass = mod.Codex;
-    return CodexClass;
+    codexLoadError = null;
   } catch (error) {
-    const message =
-      'The @openai/codex-sdk package is required to run Codex conversations. ' +
-      'Install it by building the TypeScript SDK from https://github.com/openai/codex (sdk/typescript) ' +
-      'and adding it to node_modules, or install a published release when available.';
-    throw new Error(`${message}\nOriginal error: ${(error as Error).message}`);
+    codexLoadError = error instanceof Error ? error : new Error(String(error));
+    CodexClass = null;
   }
+
+  return CodexClass;
 }

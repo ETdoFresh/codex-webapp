@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
@@ -32,6 +32,24 @@ const frontendUrl = mode === 'dev' ? 'http://localhost:5173' : 'http://localhost
 const backendUrl = 'http://localhost:4000';
 const proxyPort = process.env.PORT ?? '3000';
 
+const resolveCodexPath = () => {
+  if (process.env.CODEX_PATH && process.env.CODEX_PATH.trim() !== '') {
+    return process.env.CODEX_PATH;
+  }
+
+  const result = spawnSync('which', ['codex'], { encoding: 'utf8' });
+  if (result.status === 0) {
+    const inferredPath = result.stdout.trim();
+    if (inferredPath) {
+      return inferredPath;
+    }
+  }
+
+  return null;
+};
+
+const detectedCodexPath = resolveCodexPath();
+
 const services = [
   {
     name: 'frontend',
@@ -48,7 +66,10 @@ const services = [
     name: 'backend',
     cwd: path.join(rootDir, 'backend'),
     script: mode,
-    env: { PORT: '4000' },
+    env: {
+      PORT: '4000',
+      ...(detectedCodexPath ? { CODEX_PATH: detectedCodexPath } : {})
+    },
     readyCheck: {
       url: `${backendUrl}/health`,
       validateStatus: (status) => status >= 200 && status < 300,
