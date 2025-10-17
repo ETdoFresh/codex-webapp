@@ -17,12 +17,16 @@ import {
   fetchMeta,
   fetchMessages,
   fetchSessions,
-  safePostMessage
+  safePostMessage,
+  updateMeta
 } from './api/client';
 import type { AppMeta, Message, PostMessageErrorResponse, Session } from './api/types';
 
 const DEFAULT_SESSION_TITLE = 'New Chat';
 const THEME_STORAGE_KEY = 'codex:theme';
+
+const FALLBACK_MODELS = ['gpt-5-codex', 'gpt-5'];
+const FALLBACK_REASONING: AppMeta['reasoningEffort'][] = ['low', 'medium', 'high'];
 
 type Theme = 'light' | 'dark';
 
@@ -106,6 +110,7 @@ function App() {
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [meta, setMeta] = useState<AppMeta | null>(null);
+  const [updatingMeta, setUpdatingMeta] = useState(false);
   const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
   const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -364,6 +369,62 @@ function App() {
     },
     [addAttachments]
   );
+
+  const handleModelChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    if (!meta || updatingMeta) {
+      return;
+    }
+
+    const nextModel = event.target.value;
+    if (nextModel === meta.model) {
+      return;
+    }
+
+    const previousMeta = meta;
+    setMeta({ ...meta, model: nextModel });
+    setUpdatingMeta(true);
+
+    void updateMeta({ model: nextModel })
+      .then((updated) => {
+        setMeta(updated);
+      })
+      .catch((error) => {
+        console.error('Failed to update model setting', error);
+        setMeta(previousMeta);
+        setErrorNotice('Unable to update model preference. Please try again.');
+      })
+      .finally(() => {
+        setUpdatingMeta(false);
+      });
+  };
+
+  const handleReasoningEffortChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    if (!meta || updatingMeta) {
+      return;
+    }
+
+    const nextEffort = event.target.value as AppMeta['reasoningEffort'];
+    if (nextEffort === meta.reasoningEffort) {
+      return;
+    }
+
+    const previousMeta = meta;
+    setMeta({ ...meta, reasoningEffort: nextEffort });
+    setUpdatingMeta(true);
+
+    void updateMeta({ reasoningEffort: nextEffort })
+      .then((updated) => {
+        setMeta(updated);
+      })
+      .catch((error) => {
+        console.error('Failed to update reasoning effort', error);
+        setMeta(previousMeta);
+        setErrorNotice('Unable to update reasoning effort. Please try again.');
+      })
+      .finally(() => {
+        setUpdatingMeta(false);
+      });
+  };
 
   const handleRemoveAttachment = (attachmentId: string) => {
     setComposerAttachments((previous) =>
@@ -785,14 +846,49 @@ function App() {
                     />
                   </div>
                   <div className="composer-meta">
-                    <span>
-                      Model{' '}
-                      <code>{(meta?.model ?? 'gpt-5-codex').toLowerCase()}</code>
-                    </span>
-                    <span>
-                      Reasoning effort{' '}
-                      <strong>{(meta?.reasoningEffort ?? 'medium').toUpperCase()}</strong>
-                    </span>
+                    {meta ? (
+                      <>
+                        <label className="composer-meta-field">
+                          <span>Model</span>
+                          <select
+                            value={meta.model}
+                            onChange={handleModelChange}
+                            disabled={updatingMeta}
+                          >
+                            {(meta.availableModels.length > 0
+                              ? meta.availableModels
+                              : FALLBACK_MODELS
+                            ).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="composer-meta-field">
+                          <span>Reasoning Effort</span>
+                          <select
+                            value={meta.reasoningEffort}
+                            onChange={handleReasoningEffortChange}
+                            disabled={updatingMeta}
+                          >
+                            {(meta.availableReasoningEfforts.length > 0
+                              ? meta.availableReasoningEfforts
+                              : FALLBACK_REASONING
+                            ).map((option) => (
+                              <option key={option} value={option}>
+                                {option.charAt(0).toUpperCase() + option.slice(1)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {updatingMeta ? (
+                          <span className="composer-meta-status">Saving…</span>
+                        ) : null}
+                      </>
+                    ) : (
+                      <span className="composer-meta-loading">Loading settings…</span>
+                    )}
                   </div>
                   <button type="submit" disabled={isComposerDisabled}>
                     {sendingMessage ? 'Thinking…' : 'Send'}

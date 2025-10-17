@@ -66,6 +66,8 @@ export type PostMessageErrorResponse = {
 export type AppMeta = {
   model: string;
   reasoningEffort: 'low' | 'medium' | 'high';
+  availableModels: string[];
+  availableReasoningEfforts: Array<'low' | 'medium' | 'high'>;
 };
 
 export type AttachmentUpload = {

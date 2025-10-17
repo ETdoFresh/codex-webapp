@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SessionRecord } from './db';
 import { ensureWorkspaceDirectory } from './workspaces';
+import { getCodexMeta } from './settings';
 
 type ThreadCacheEntry = {
   thread: Thread;
@@ -66,11 +67,12 @@ class CodexManager {
   }
 
   private createThreadOptions(workspaceDirectory: string) {
+    const { model } = getCodexMeta();
     return {
       sandboxMode,
       workingDirectory: workspaceDirectory,
       skipGitRepoCheck: true,
-      ...(process.env.CODEX_MODEL ? { model: process.env.CODEX_MODEL } : {})
+      ...(model ? { model } : {})
     };
   }
 
@@ -105,6 +107,10 @@ class CodexManager {
 
   forgetSession(sessionId: string) {
     this.threads.delete(sessionId);
+  }
+
+  clearThreadCache() {
+    this.threads.clear();
   }
 }
 

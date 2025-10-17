@@ -51,15 +51,83 @@ const normalizeMessage = (message: Message): Message => ({
   attachments: message.attachments ?? []
 });
 
-export async function fetchMeta(): Promise<AppMeta> {
-  const data = await request<{ model: string; reasoningEffort: string }>('/api/meta');
-  const supportedEffort = new Set(['low', 'medium', 'high']);
-  const effort = supportedEffort.has(data.reasoningEffort)
-    ? (data.reasoningEffort as AppMeta['reasoningEffort'])
+const normalizeReasoningEffort = (value: string | undefined): AppMeta['reasoningEffort'] => {
+  const normalized = value?.toLowerCase();
+  return normalized === 'low' || normalized === 'medium' || normalized === 'high'
+    ? normalized
     : 'medium';
+};
+
+const normalizeReasoningEffortList = (
+  values: string[] | undefined
+): AppMeta['reasoningEffort'][] => {
+  if (!Array.isArray(values)) {
+    return ['low', 'medium', 'high'];
+  }
+
+  const deduped = new Set<AppMeta['reasoningEffort']>();
+  for (const value of values) {
+    deduped.add(normalizeReasoningEffort(value));
+  }
+
+  return deduped.size > 0 ? Array.from(deduped) : ['low', 'medium', 'high'];
+};
+
+export async function fetchMeta(): Promise<AppMeta> {
+  const data = await request<{
+    model: string;
+    reasoningEffort: string;
+    availableModels: string[];
+    availableReasoningEfforts: string[];
+  }>('/api/meta');
+
+  const availableReasoningEfforts = normalizeReasoningEffortList(data.availableReasoningEfforts);
+
+  const availableModels = Array.isArray(data.availableModels) && data.availableModels.length > 0
+    ? Array.from(new Set(data.availableModels.map((item) => item.trim()).filter((item) => item.length > 0)))
+    : ['gpt-5-codex', 'gpt-5'];
+
+  const model = availableModels.includes(data.model)
+    ? data.model
+    : availableModels[0] ?? 'gpt-5-codex';
+
   return {
-    model: data.model ?? 'gpt-5-codex',
-    reasoningEffort: effort
+    model,
+    reasoningEffort: normalizeReasoningEffort(data.reasoningEffort),
+    availableModels,
+    availableReasoningEfforts
+  };
+}
+
+export async function updateMeta(payload: {
+  model?: string;
+  reasoningEffort?: AppMeta['reasoningEffort'];
+}): Promise<AppMeta> {
+  const data = await request<{
+    model: string;
+    reasoningEffort: string;
+    availableModels: string[];
+    availableReasoningEfforts: string[];
+  }>('/api/meta', {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+  const availableReasoningEfforts = normalizeReasoningEffortList(data.availableReasoningEfforts);
+
+  const availableModels = Array.isArray(data.availableModels) && data.availableModels.length > 0
+    ? Array.from(new Set(data.availableModels.map((item) => item.trim()).filter((item) => item.length > 0)))
+    : ['gpt-5-codex', 'gpt-5'];
+
+  const model = availableModels.includes(data.model)
+    ? data.model
+    : availableModels[0] ?? 'gpt-5-codex';
+
+  return {
+    model,
+    reasoningEffort: normalizeReasoningEffort(data.reasoningEffort),
+    availableModels,
+    availableReasoningEfforts
   };
 }
 
