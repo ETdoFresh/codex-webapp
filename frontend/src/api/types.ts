@@ -52,3 +52,8 @@ export type PostMessageErrorResponse = {
   message: string;
   userMessage: Message;
 };
+
+export type AppMeta = {
+  model: string;
+  reasoningEffort: 'low' | 'medium' | 'high';
+};

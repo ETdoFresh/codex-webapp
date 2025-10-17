@@ -1,5 +1,6 @@
 import type {
   CreateSessionResponse,
+  AppMeta,
   ListMessagesResponse,
   ListSessionsResponse,
   Message,
@@ -42,6 +43,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export async function fetchSessions(): Promise<Session[]> {
   const data = await request<ListSessionsResponse>('/api/sessions');
   return data.sessions;
+}
+
+export async function fetchMeta(): Promise<AppMeta> {
+  const data = await request<{ model: string; reasoningEffort: string }>('/api/meta');
+  const supportedEffort = new Set(['low', 'medium', 'high']);
+  const effort = supportedEffort.has(data.reasoningEffort)
+    ? (data.reasoningEffort as AppMeta['reasoningEffort'])
+    : 'medium';
+  return {
+    model: data.model ?? 'gpt-5-codex',
+    reasoningEffort: effort
+  };
 }
 
 export async function createSession(title?: string): Promise<Session> {

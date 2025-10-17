@@ -493,7 +493,8 @@ textarea {
 }
 
 .composer {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
   background: var(--color-composer-bg);
   border-radius: 1.25rem;
@@ -521,8 +522,39 @@ textarea {
   background: rgba(255, 255, 255, 0.12);
 }
 
+.composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.composer-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.composer-meta strong {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-text-primary);
+}
+
+.composer-meta code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Fira Mono', ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  background: rgba(148, 163, 184, 0.18);
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.35rem;
+  letter-spacing: 0.04em;
+  color: inherit;
+}
+
 .composer button {
-  justify-self: flex-end;
   background: var(--color-button-primary-bg);
   color: var(--color-button-primary-text);
   border: none;

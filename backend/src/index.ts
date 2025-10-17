@@ -69,6 +69,17 @@ app.get('/health', async (_req: Request, res: Response) => {
   });
 });
 
+app.get('/api/meta', (_req: Request, res: Response) => {
+  const model = process.env.CODEX_MODEL ?? 'gpt-5-codex';
+  const reasoningEffort =
+    process.env.CODEX_REASONING_EFFORT?.toLowerCase() ?? 'medium';
+
+  res.json({
+    model,
+    reasoningEffort
+  });
+});
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.redirect(307, '/health');
 });

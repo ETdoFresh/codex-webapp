@@ -1,14 +1,15 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import StatusChip from './components/StatusChip';
 import { useHealthStatus } from './hooks/useHealthStatus';
 import {
   createSession,
   deleteSession,
+  fetchMeta,
   fetchMessages,
   fetchSessions,
   safePostMessage
 } from './api/client';
-import type { Message, PostMessageErrorResponse, Session } from './api/types';
+import type { AppMeta, Message, PostMessageErrorResponse, Session } from './api/types';
 
 const DEFAULT_SESSION_TITLE = 'New Chat';
 const THEME_STORAGE_KEY = 'codex:theme';
@@ -64,6 +65,7 @@ function App() {
   const [composerValue, setComposerValue] = useState('');
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
+  const [meta, setMeta] = useState<AppMeta | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
 
   const activeSession = useMemo(
@@ -141,6 +143,26 @@ function App() {
   }, [messages]);
 
   useEffect(() => {
+    let canceled = false;
+    const loadMeta = async () => {
+      try {
+        const settings = await fetchMeta();
+        if (!canceled) {
+          setMeta(settings);
+        }
+      } catch (error) {
+        console.warn('Failed to load application metadata', error);
+      }
+    };
+
+    void loadMeta();
+
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.theme = theme;
     }
@@ -154,6 +176,27 @@ function App() {
 
   const toggleTheme = () => {
     setTheme((previous) => (previous === 'dark' ? 'light' : 'dark'));
+  };
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+
+    const { ctrlKey, metaKey, shiftKey } = event;
+    const textarea = event.currentTarget;
+    const value = textarea.value;
+    const selectionStart = textarea.selectionStart ?? value.length;
+    const selectionEnd = textarea.selectionEnd ?? value.length;
+    const cursorAtEnd = selectionStart === value.length && selectionEnd === value.length;
+    const shouldSubmit = ctrlKey || metaKey || (!shiftKey && cursorAtEnd);
+
+    if (!shouldSubmit) {
+      return;
+    }
+
+    event.preventDefault();
+    textarea.form?.requestSubmit?.();
   };
 
   const handleCreateSession = async () => {
@@ -417,12 +460,25 @@ function App() {
                   placeholder="Ask Codex anything…"
                   value={composerValue}
                   onChange={(event) => setComposerValue(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
                   disabled={isComposerDisabled}
                   rows={3}
                 />
-                <button type="submit" disabled={isComposerDisabled}>
-                  {sendingMessage ? 'Thinking…' : 'Send'}
-                </button>
+                <div className="composer-footer">
+                  <div className="composer-meta">
+                    <span>
+                      Model{' '}
+                      <code>{(meta?.model ?? 'gpt-5-codex').toLowerCase()}</code>
+                    </span>
+                    <span>
+                      Reasoning effort{' '}
+                      <strong>{(meta?.reasoningEffort ?? 'medium').toUpperCase()}</strong>
+                    </span>
+                  </div>
+                  <button type="submit" disabled={isComposerDisabled}>
+                    {sendingMessage ? 'Thinking…' : 'Send'}
+                  </button>
+                </div>
               </form>
 
               {errorNotice ? <div className="error-banner">{errorNotice}</div> : null}
