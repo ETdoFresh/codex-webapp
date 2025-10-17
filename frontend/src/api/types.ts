@@ -8,11 +8,21 @@ export type Session = {
 
 export type MessageRole = 'system' | 'user' | 'assistant';
 
+export type Attachment = {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  createdAt: string;
+};
+
 export type Message = {
   id: string;
   role: MessageRole;
   content: string;
   createdAt: string;
+  attachments: Attachment[];
 };
 
 export type Usage = {
@@ -56,4 +66,11 @@ export type PostMessageErrorResponse = {
 export type AppMeta = {
   model: string;
   reasoningEffort: 'low' | 'medium' | 'high';
+};
+
+export type AttachmentUpload = {
+  filename: string;
+  mimeType: string;
+  size: number;
+  base64: string;
 };

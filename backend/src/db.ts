@@ -25,6 +25,28 @@ export type MessageRecord = {
   createdAt: string;
 };
 
+export type AttachmentRecord = {
+  id: string;
+  messageId: string;
+  sessionId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  relativePath: string;
+  createdAt: string;
+};
+
+export type MessageWithAttachments = MessageRecord & {
+  attachments: AttachmentRecord[];
+};
+
+export type NewAttachmentInput = {
+  filename: string;
+  mimeType: string;
+  size: number;
+  relativePath: string;
+};
+
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(dirname, '..');
 const defaultDataDir = path.join(projectRoot, 'var');
@@ -64,6 +86,28 @@ const migrations: string[] = [
   `
   CREATE INDEX IF NOT EXISTS idx_messages_session_created_at
     ON messages(session_id, created_at)
+`,
+  `
+  CREATE TABLE IF NOT EXISTS message_attachments (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    relative_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  )
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_message_attachments_message
+    ON message_attachments(message_id)
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_message_attachments_session
+    ON message_attachments(session_id)
 `
 ];
 
@@ -135,6 +179,71 @@ const insertMessageStmt = db.prepare<{
 }>(`
   INSERT INTO messages (id, session_id, role, content, created_at)
   VALUES (@id, @sessionId, @role, @content, @createdAt)
+`);
+
+const insertAttachmentStmt = db.prepare<{
+  id: string;
+  messageId: string;
+  sessionId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  relativePath: string;
+  createdAt: string;
+}>(`
+  INSERT INTO message_attachments (
+    id,
+    message_id,
+    session_id,
+    filename,
+    mime_type,
+    size,
+    relative_path,
+    created_at
+  )
+  VALUES (
+    @id,
+    @messageId,
+    @sessionId,
+    @filename,
+    @mimeType,
+    @size,
+    @relativePath,
+    @createdAt
+  )
+`);
+
+const listAttachmentsForMessageStmt = db.prepare<{
+  messageId: string;
+}, AttachmentRecord>(`
+  SELECT
+    id,
+    message_id as messageId,
+    session_id as sessionId,
+    filename,
+    mime_type as mimeType,
+    size,
+    relative_path as relativePath,
+    created_at as createdAt
+  FROM message_attachments
+  WHERE message_id = @messageId
+  ORDER BY created_at ASC
+`);
+
+const getAttachmentStmt = db.prepare<{
+  id: string;
+}, AttachmentRecord>(`
+  SELECT
+    id,
+    message_id as messageId,
+    session_id as sessionId,
+    filename,
+    mime_type as mimeType,
+    size,
+    relative_path as relativePath,
+    created_at as createdAt
+  FROM message_attachments
+  WHERE id = @id
 `);
 
 const touchSessionStmt = db.prepare<{
@@ -221,14 +330,16 @@ export function deleteSession(id: string): boolean {
 export function addMessage(
   sessionId: string,
   role: MessageRecord['role'],
-  content: string
-): MessageRecord {
+  content: string,
+  attachments: NewAttachmentInput[] = []
+): MessageWithAttachments {
+  const createdAt = new Date().toISOString();
   const message: MessageRecord = {
     id: uuid(),
     sessionId,
     role,
     content,
-    createdAt: new Date().toISOString()
+    createdAt
   };
 
   insertMessageStmt.run({
@@ -239,15 +350,51 @@ export function addMessage(
     createdAt: message.createdAt
   });
 
+  const savedAttachments: AttachmentRecord[] = [];
+
+  for (const attachment of attachments) {
+    const record: AttachmentRecord = {
+      id: uuid(),
+      messageId: message.id,
+      sessionId,
+      filename: attachment.filename,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      relativePath: attachment.relativePath,
+      createdAt
+    };
+
+    insertAttachmentStmt.run({
+      id: record.id,
+      messageId: record.messageId,
+      sessionId: record.sessionId,
+      filename: record.filename,
+      mimeType: record.mimeType,
+      size: record.size,
+      relativePath: record.relativePath,
+      createdAt: record.createdAt
+    });
+
+    savedAttachments.push(record);
+  }
+
   touchSessionStmt.run({ id: sessionId, updatedAt: message.createdAt });
 
-  return message;
+  return { ...message, attachments: savedAttachments };
 }
 
-export function listMessages(sessionId: string): MessageRecord[] {
-  return listMessagesStmt.all({ sessionId }) as MessageRecord[];
+export function listMessages(sessionId: string): MessageWithAttachments[] {
+  const baseMessages = listMessagesStmt.all({ sessionId }) as MessageRecord[];
+  return baseMessages.map((message) => ({
+    ...message,
+    attachments: listAttachmentsForMessageStmt.all({ messageId: message.id }) ?? []
+  }));
 }
 
 export function getDatabasePath(): string {
   return databasePath;
+}
+
+export function getAttachment(id: string): AttachmentRecord | null {
+  return getAttachmentStmt.get({ id }) ?? null;
 }

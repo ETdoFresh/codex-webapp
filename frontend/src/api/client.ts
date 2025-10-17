@@ -1,6 +1,7 @@
 import type {
   CreateSessionResponse,
   AppMeta,
+  AttachmentUpload,
   ListMessagesResponse,
   ListSessionsResponse,
   Message,
@@ -45,6 +46,11 @@ export async function fetchSessions(): Promise<Session[]> {
   return data.sessions;
 }
 
+const normalizeMessage = (message: Message): Message => ({
+  ...message,
+  attachments: message.attachments ?? []
+});
+
 export async function fetchMeta(): Promise<AppMeta> {
   const data = await request<{ model: string; reasoningEffort: string }>('/api/meta');
   const supportedEffort = new Set(['low', 'medium', 'high']);
@@ -74,16 +80,19 @@ export async function deleteSession(id: string): Promise<void> {
 
 export async function fetchMessages(sessionId: string): Promise<Message[]> {
   const data = await request<ListMessagesResponse>(`/api/sessions/${sessionId}/messages`);
-  return data.messages;
+  return data.messages.map((message) => normalizeMessage(message));
 }
 
 export async function postMessage(
   sessionId: string,
-  content: string
+  payload: {
+    content: string;
+    attachments?: AttachmentUpload[];
+  }
 ): Promise<PostMessageSuccessResponse> {
   return request<PostMessageSuccessResponse>(`/api/sessions/${sessionId}/messages`, {
     method: 'POST',
-    body: JSON.stringify({ content })
+    body: JSON.stringify(payload)
   });
 }
 
@@ -93,11 +102,19 @@ export type PostMessageResult =
 
 export async function safePostMessage(
   sessionId: string,
-  content: string
+  payload: {
+    content: string;
+    attachments?: AttachmentUpload[];
+  }
 ): Promise<PostMessageResult> {
   try {
-    const data = await postMessage(sessionId, content);
-    return { status: 'ok', data };
+    const data = await postMessage(sessionId, payload);
+    const normalized = {
+      ...data,
+      userMessage: normalizeMessage(data.userMessage),
+      assistantMessage: normalizeMessage(data.assistantMessage)
+    };
+    return { status: 'ok', data: normalized };
   } catch (error) {
     if (error instanceof ApiError && error.body) {
       return { status: 'error', error };
