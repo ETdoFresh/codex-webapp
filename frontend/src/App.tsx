@@ -11,6 +11,28 @@ import {
 import type { Message, PostMessageErrorResponse, Session } from './api/types';
 
 const DEFAULT_SESSION_TITLE = 'New Chat';
+const THEME_STORAGE_KEY = 'codex:theme';
+
+type Theme = 'light' | 'dark';
+
+const getInitialTheme = (): Theme => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return 'dark';
+  }
+
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') {
+      document.documentElement.dataset.theme = stored;
+      return stored;
+    }
+  } catch (error) {
+    console.warn('Unable to read theme preference', error);
+  }
+
+  document.documentElement.dataset.theme = 'dark';
+  return 'dark';
+};
 
 const sessionDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -41,6 +63,7 @@ function App() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [composerValue, setComposerValue] = useState('');
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const messageListRef = useRef<HTMLDivElement | null>(null);
 
   const activeSession = useMemo(
@@ -116,6 +139,22 @@ function App() {
     }
     container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.theme = theme;
+    }
+
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (error) {
+      console.warn('Unable to persist theme preference', error);
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((previous) => (previous === 'dark' ? 'light' : 'dark'));
+  };
 
   const handleCreateSession = async () => {
     if (creatingSession) {
@@ -257,7 +296,17 @@ function App() {
             Multi-session workspace backed by the Codex SDK and persistent history
           </p>
         </div>
-        <StatusChip status={health.status} lastUpdated={health.lastUpdated} />
+        <div className="header-actions">
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={toggleTheme}
+            aria-label="Toggle color theme"
+          >
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
+          <StatusChip status={health.status} lastUpdated={health.lastUpdated} />
+        </div>
       </header>
 
       <div className="workspace">
