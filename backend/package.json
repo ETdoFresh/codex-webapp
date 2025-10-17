@@ -10,7 +10,7 @@
     "start": "npm run build && node dist/index.js"
   },
   "dependencies": {
-    "@openai/codex-sdk": "file:../../../../../../../root/tmp/codex/sdk/typescript/openai-codex-sdk-0.0.0-dev.tgz",
+    "@openai/codex-sdk": "^0.46.0",
     "better-sqlite3": "^9.6.0",
     "express": "^4.19.2",
     "uuid": "^9.0.1",

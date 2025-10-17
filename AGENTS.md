@@ -27,11 +27,14 @@ Keep this checklist handy when working in the repo—especially if you are an AI
 
 Because all services are hot-reloading, you can edit files while `npm run dev` is still running—just watch the logs for restart confirmations.
 
+> **Tip:** If you restart `npm run dev` and Vite (`5173`), the backend (`4000`), or the proxy (`3000`) refuse to bind because the port is in use, look for orphaned `tsx watch` processes. `lsof -i :5173` (or `:4000`, `:3000`) and `ps -ef | grep 'tsx watch src/index.ts'` are reliable ways to find and kill the stragglers before re-running the orchestrator.
+
 ## Codex SDK & CLI
 
 - The backend requires `@openai/codex-sdk` (installed in `backend/package.json`).
 - The orchestrator injects `CODEX_PATH` automatically if a `codex` binary exists on the host. Otherwise set `CODEX_PATH` manually or install the CLI (`npm install -g @openai/codex` or `brew install codex`).
 - Provide authentication through `codex login` or `CODEX_API_KEY`/`OPENAI_API_KEY` environment variables. Without a working SDK/CLI configuration, API calls return HTTP 502 with a descriptive error bubble in the UI.
+- If you see a 502 that says `Codex SDK is not installed. ... Original error: No "exports" main defined ...`, replace any locally bundled tarball with the published package: run `npm install @openai/codex-sdk@latest` inside `backend/`, then restart the stack so the backend picks up the new module.
 
 ## Testing with Chrome DevTools MCP
 
@@ -53,7 +56,7 @@ We routinely drive end-to-end tests using the Chrome DevTools MCP integration:
 
 ## Troubleshooting notes
 
-- If the frontend reports `ApiError 404` for `/api/sessions`, check the proxy’s `pathRewrite` settings; the backend expects the `/api` prefix.
+- If the frontend reports `ApiError 404` for `/api/sessions`, check the proxy’s `pathRewrite` settings. The middleware should leave the `/api` prefix intact when forwarding (`pathRewrite: (path) => (path.startsWith('/api') ? path : \`/api\${path}\`)`).
 - 502 responses from the backend usually mean Codex SDK/CLI isn’t configured.
 - The proxy’s `/health` endpoint performs a basic downstream check (`/health` for backend and the frontend dev server or static bundle); watch these logs when diagnosing startup issues.
 

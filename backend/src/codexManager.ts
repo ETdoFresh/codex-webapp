@@ -37,12 +37,12 @@ class CodexManager {
     this.threads = new Map();
   }
 
-  private getCodex(): Codex {
+  private async getCodex(): Promise<Codex> {
     if (this.codexInstance) {
       return this.codexInstance;
     }
 
-    const CodexCtor = loadCodexClass();
+    const CodexCtor = await loadCodexClass();
     if (!CodexCtor) {
       const errorMessage =
         'Codex SDK is not installed. Build the SDK from https://github.com/openai/codex and install it into backend/node_modules, or set CODEX_PATH to a codex binary.';
@@ -74,22 +74,20 @@ class CodexManager {
     };
   }
 
-  private ensureThread(session: SessionRecord): Thread {
+  private async ensureThread(session: SessionRecord): Promise<Thread> {
     const cached = this.getThreadFromCache(session.id);
     if (cached) {
       return cached;
     }
 
     const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+    const codex = await this.getCodex();
 
     let thread: Thread;
     if (session.codexThreadId) {
-      thread = this.getCodex().resumeThread(
-        session.codexThreadId,
-        this.createThreadOptions(workspaceDirectory)
-      );
+      thread = codex.resumeThread(session.codexThreadId, this.createThreadOptions(workspaceDirectory));
     } else {
-      thread = this.getCodex().startThread(this.createThreadOptions(workspaceDirectory));
+      thread = codex.startThread(this.createThreadOptions(workspaceDirectory));
     }
 
     this.setThread(session.id, thread);
@@ -100,7 +98,7 @@ class CodexManager {
     session: SessionRecord,
     input: string
   ): Promise<{ result: RunResult; threadId: string | null }> {
-    const thread = this.ensureThread(session);
+    const thread = await this.ensureThread(session);
     const result = await thread.run(input);
     return { result, threadId: thread.id };
   }
@@ -112,13 +110,13 @@ class CodexManager {
 
 export const codexManager = new CodexManager();
 
-function loadCodexClass(): typeof Codex | null {
+async function loadCodexClass(): Promise<typeof Codex | null> {
   if (CodexClass !== undefined) {
     return CodexClass;
   }
 
   try {
-    const mod = require('@openai/codex-sdk') as { Codex: typeof Codex };
+    const mod = await import('@openai/codex-sdk') as { Codex: typeof Codex };
     CodexClass = mod.Codex;
     codexLoadError = null;
   } catch (error) {

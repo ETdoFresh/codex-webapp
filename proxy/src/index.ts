@@ -24,7 +24,6 @@ const staticDirExists = fs.existsSync(staticDir);
 
 const app = express();
 app.disable('x-powered-by');
-
 const probe = async (url: string) => {
   try {
     const response = await fetch(url, { cache: 'no-store' });
@@ -60,7 +59,7 @@ const configureProxies = () => {
     createProxyMiddleware({
       target: BACKEND_URL,
       changeOrigin: true,
-      pathRewrite: { '^/api': '' }
+      pathRewrite: (path) => (path.startsWith('/api') ? path : `/api${path}`)
     })
   );
 
