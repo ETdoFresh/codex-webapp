@@ -388,10 +388,15 @@ app.post(
           : '';
       if (userMessage.attachments.length > 0) {
         const attachmentSummary = userMessage.attachments
-          .map(
-            (attachment, index) =>
-              `${index + 1}. ${attachment.filename} (workspace path: ${attachment.relativePath})`
-          )
+          .map((attachment, index) => {
+            const workspaceRelativePath = attachment.relativePath.startsWith(`${session.id}/`)
+              ? attachment.relativePath.slice(session.id.length + 1)
+              : attachment.relativePath;
+            const absolutePath = path
+              .resolve(getWorkspaceRoot(), attachment.relativePath)
+              .replace(/\\/g, '/');
+            return `${index + 1}. ${attachment.filename} (workspace path: ${workspaceRelativePath}; absolute path: ${absolutePath})`;
+          })
           .join('\n');
         codexInput += `\n\nAttachments:\n${attachmentSummary}`;
       }

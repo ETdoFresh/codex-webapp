@@ -107,6 +107,7 @@ function App() {
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [meta, setMeta] = useState<AppMeta | null>(null);
   const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
+  const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -187,6 +188,27 @@ function App() {
   useEffect(() => {
     setComposerAttachments([]);
   }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!imagePreview) {
+      return;
+    }
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setImagePreview(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [imagePreview]);
 
   useEffect(() => {
     let canceled = false;
@@ -649,14 +671,19 @@ function App() {
                               {attachments.map((attachment) => (
                                 <figure key={attachment.id} className="message-attachment">
                                   {attachment.mimeType.startsWith('image/') ? (
-                                    <a
-                                      href={attachment.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <button
+                                      type="button"
                                       className="message-attachment-image"
+                                      onClick={() =>
+                                        setImagePreview({
+                                          url: attachment.url,
+                                          filename: attachment.filename
+                                        })
+                                      }
+                                      aria-label={`Preview ${attachment.filename}`}
                                     >
                                       <img src={attachment.url} alt={attachment.filename} />
-                                    </a>
+                                    </button>
                                   ) : (
                                     <a
                                       href={attachment.url}
@@ -668,13 +695,28 @@ function App() {
                                     </a>
                                   )}
                                   <figcaption>
-                                    <a
-                                      href={attachment.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      {attachment.filename}
-                                    </a>
+                                    {attachment.mimeType.startsWith('image/') ? (
+                                      <button
+                                        type="button"
+                                        className="message-attachment-filename-button"
+                                        onClick={() =>
+                                          setImagePreview({
+                                            url: attachment.url,
+                                            filename: attachment.filename
+                                          })
+                                        }
+                                      >
+                                        {attachment.filename}
+                                      </button>
+                                    ) : (
+                                      <a
+                                        href={attachment.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        {attachment.filename}
+                                      </a>
+                                    )}
                                     <span>{formatFileSize(attachment.size)}</span>
                                   </figcaption>
                                 </figure>
@@ -770,6 +812,32 @@ function App() {
           )}
         </section>
       </div>
+
+      {imagePreview ? (
+        <div
+          className="image-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${imagePreview.filename} preview`}
+          onClick={() => setImagePreview(null)}
+        >
+          <div
+            className="image-modal-content"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="image-modal-close"
+              onClick={() => setImagePreview(null)}
+              aria-label="Close image preview"
+            >
+              ×
+            </button>
+            <img src={imagePreview.url} alt={imagePreview.filename} />
+            <div className="image-modal-filename">{imagePreview.filename}</div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
