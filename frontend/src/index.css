@@ -174,14 +174,42 @@ textarea {
 }
 
 .session-item .session-title {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.session-item .session-timestamp {
+.session-item .session-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.8rem;
-  opacity: 0.75;
+  opacity: 0.8;
+}
+
+.session-item .session-id-badge {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Fira Mono', ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  background: rgba(15, 23, 42, 0.1);
+  color: #1e293b;
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.35rem;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.session-item.active .session-id-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #f8fafc;
+}
+
+.session-item.active .session-meta {
+  opacity: 0.9;
 }
 
 .session-delete {

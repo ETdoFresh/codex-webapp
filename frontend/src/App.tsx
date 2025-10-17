@@ -287,6 +287,7 @@ function App() {
             <ul className="session-list">
               {sessions.map((session) => {
                 const isActive = session.id === activeSessionId;
+                const shortId = session.id.slice(0, 8);
                 return (
                   <li key={session.id}>
                     <button
@@ -295,9 +296,12 @@ function App() {
                       onClick={() => handleSelectSession(session.id)}
                     >
                       <span className="session-title">{session.title}</span>
-                      <span className="session-timestamp">
-                        {sessionDateFormatter.format(new Date(session.updatedAt))}
-                      </span>
+                      <div className="session-meta">
+                        <span className="session-timestamp">
+                          {sessionDateFormatter.format(new Date(session.updatedAt))}
+                        </span>
+                        <code className="session-id-badge">{shortId}</code>
+                      </div>
                     </button>
                     <button
                       type="button"
