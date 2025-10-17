@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
-import type { Server } from 'node:http';
+import type { RequestHandler as ProxyRequestHandler } from 'http-proxy-middleware';
+import type { IncomingMessage, Server } from 'node:http';
+import type { Socket } from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,7 +55,7 @@ const waitForService = async (name: string, url: string, attempts = 20, delayMs 
   throw new Error(`[proxy] ${name} not reachable at ${url} after ${attempts} attempts`);
 };
 
-const configureProxies = () => {
+const configureProxies = (): ProxyRequestHandler | null => {
   app.use(
     '/api',
     createProxyMiddleware({
@@ -75,16 +77,19 @@ const configureProxies = () => {
 
       res.sendFile(path.join(staticDir, 'index.html'));
     });
+
+    return null;
   } else {
     console.log(`[proxy] proxying frontend requests to ${FRONTEND_URL}`);
-    app.use(
-      '/',
-      createProxyMiddleware({
-        target: FRONTEND_URL,
-        changeOrigin: true,
-        ws: true
-      })
-    );
+    const frontendProxy = createProxyMiddleware({
+      target: FRONTEND_URL,
+      changeOrigin: true,
+      ws: true
+    });
+
+    app.use('/', frontendProxy);
+
+    return frontendProxy;
   }
 };
 
@@ -140,7 +145,7 @@ const startServer = async () => {
   }
 
   await waitForService('backend', new URL('/health', BACKEND_URL).toString());
-  configureProxies();
+  const frontendProxy = configureProxies();
 
   let currentPort = START_PORT;
   for (let attempts = 0; attempts < MAX_PORT_SEARCH; attempts += 1) {
@@ -154,6 +159,18 @@ const startServer = async () => {
       });
 
       console.log(`[proxy] listening on port ${currentPort}`);
+
+      if (frontendProxy) {
+        server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
+          const requestUrl = req.url ?? '';
+          if (requestUrl.startsWith('/api')) {
+            return;
+          }
+
+          // Ensure Vite dev server receives HMR websocket traffic when going through the proxy.
+          frontendProxy.upgrade(req, socket, head);
+        });
+      }
 
       const handleShutdown = (signal: NodeJS.Signals) => {
         console.log(`[proxy] received ${signal}, shutting down`);
