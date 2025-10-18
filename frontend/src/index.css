@@ -612,13 +612,17 @@ textarea {
 }
 
 .message-reasoning-detail-text {
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
-  font-size: 0.8rem;
-  line-height: 1.5;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.6;
   background: rgba(15, 23, 42, 0.04);
-  border-radius: 0.6rem;
-  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  padding: 0.8rem 1rem;
   color: inherit;
+}
+
+.message-reasoning-detail-text > * {
+  margin: 0 0 0.75rem;
 }
 
 .message-reasoning-detail-text > *:first-child {
@@ -629,21 +633,76 @@ textarea {
   margin-bottom: 0;
 }
 
+.message-reasoning-detail-text h1,
+.message-reasoning-detail-text h2,
+.message-reasoning-detail-text h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.message-reasoning-detail-text h4,
+.message-reasoning-detail-text h5,
+.message-reasoning-detail-text h6 {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.message-reasoning-detail-text p + p {
+  margin-top: 0.75rem;
+}
+
 .message-reasoning-detail-text ul,
 .message-reasoning-detail-text ol {
-  margin: 0.35rem 0 0.35rem 1.25rem;
+  margin: 0.5rem 0 0.5rem 1.5rem;
+  padding: 0;
+}
+
+.message-reasoning-detail-text li + li {
+  margin-top: 0.35rem;
+}
+
+.message-reasoning-detail-text blockquote {
+  margin: 0.8rem 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid rgba(59, 130, 246, 0.4);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.message-reasoning-detail-text pre {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  background: rgba(15, 23, 42, 0.07);
+  border-radius: 0.6rem;
+  padding: 0.65rem 0.8rem;
+  overflow-x: auto;
 }
 
 .message-reasoning-detail-text code {
   font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.82rem;
+  background: rgba(15, 23, 42, 0.08);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
 }
 
 [data-theme='dark'] .message-reasoning-detail-text {
   background: rgba(148, 163, 184, 0.12);
 }
 
+[data-theme='dark'] .message-reasoning-detail-text pre {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+[data-theme='dark'] .message-reasoning-detail-text code {
+  background: rgba(148, 163, 184, 0.24);
+}
+
 .message-reasoning-detail-json {
   background: rgba(15, 23, 42, 0.06);
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.82rem;
 }
 
 [data-theme='dark'] .message-reasoning-detail-json {
@@ -701,8 +760,87 @@ textarea {
 .message-content {
   margin: 0;
   font-family: inherit;
-  white-space: pre-wrap;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: inherit;
   word-break: break-word;
+}
+
+.message-content > * {
+  margin: 0 0 0.9rem;
+}
+
+.message-content > *:last-child {
+  margin-bottom: 0;
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.6rem 0;
+}
+
+.message-content h4,
+.message-content h5,
+.message-content h6 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.6rem 0;
+}
+
+.message-content p + p {
+  margin-top: 0.75rem;
+}
+
+.message-content ul,
+.message-content ol {
+  margin: 0.5rem 0 0.5rem 1.5rem;
+  padding: 0;
+}
+
+.message-content li + li {
+  margin-top: 0.35rem;
+}
+
+.message-content blockquote {
+  margin: 0.8rem 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid rgba(59, 130, 246, 0.35);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.message-content pre {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 0.7rem;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+}
+
+.message-content pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.message-content code {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85rem;
+  background: rgba(15, 23, 42, 0.08);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.35rem;
+}
+
+[data-theme='dark'] .message-content pre {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+[data-theme='dark'] .message-content code {
+  background: rgba(148, 163, 184, 0.26);
 }
 
 .composer {

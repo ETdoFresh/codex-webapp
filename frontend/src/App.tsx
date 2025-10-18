@@ -682,7 +682,13 @@ function App() {
           </span>
         </header>
         {reasoningBlock}
-        <pre className="message-content">{message.content}</pre>
+        <ReactMarkdown
+          className="message-content"
+          remarkPlugins={markdownPlugins}
+          components={blockMarkdownComponents}
+        >
+          {message.content}
+        </ReactMarkdown>
         {attachments.length > 0 ? (
           <div className="message-attachments">
             {attachments.map((attachment) => (
