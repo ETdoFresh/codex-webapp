@@ -12,12 +12,13 @@ import {
 import StatusChip from './components/StatusChip';
 import { useHealthStatus } from './hooks/useHealthStatus';
 import {
+  ApiError,
   createSession,
   deleteSession,
   fetchMeta,
   fetchMessages,
   fetchSessions,
-  safePostMessage,
+  streamPostMessage,
   updateMeta
 } from './api/client';
 import type { AppMeta, Message, PostMessageErrorResponse, Session, TurnItem } from './api/types';
@@ -151,6 +152,7 @@ function App() {
   const [defaultReasoningExpanded, setDefaultReasoningExpanded] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -264,6 +266,10 @@ function App() {
 
   useEffect(() => {
     setComposerAttachments([]);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
 
   useEffect(() => {
@@ -839,7 +845,8 @@ function App() {
 
   const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!activeSessionId) {
+    const targetSessionId = activeSessionId;
+    if (!targetSessionId || sendingMessage) {
       return;
     }
 
@@ -851,86 +858,250 @@ function App() {
     setSendingMessage(true);
     setErrorNotice(null);
 
+    const attachmentUploads = composerAttachments.map((attachment) => ({
+      filename: attachment.name,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      base64: attachment.base64
+    }));
+
+    const payload = {
+      content: trimmedContent,
+      attachments: attachmentUploads.length > 0 ? attachmentUploads : undefined
+    };
+
     try {
-      const attachmentUploads = composerAttachments.map((attachment) => ({
-        filename: attachment.name,
-        mimeType: attachment.mimeType,
-        size: attachment.size,
-        base64: attachment.base64
-      }));
+      const stream = streamPostMessage(targetSessionId, payload);
+      let streamCompleted = false;
 
-      const payload = {
-        content: trimmedContent,
-        attachments: attachmentUploads.length > 0 ? attachmentUploads : undefined
-      };
+      for await (const streamEvent of stream) {
+        const viewingTargetSession = activeSessionIdRef.current === targetSessionId;
 
-      const result = await safePostMessage(activeSessionId, payload);
+        if (streamEvent.type === 'user_message') {
+          const normalizedMessage: Message = {
+            ...streamEvent.message,
+            attachments: streamEvent.message.attachments ?? [],
+            items: streamEvent.message.items ?? []
+          };
 
-      if (result.status === 'ok') {
-        const { data } = result;
+          if (viewingTargetSession) {
+            setMessages((previous) => [...previous, normalizedMessage]);
+            setComposerValue('');
+            setComposerAttachments([]);
+          }
 
-        setMessages((prev) => [...prev, data.userMessage, data.assistantMessage]);
-        setComposerValue('');
-        setComposerAttachments([]);
-
-        setSessions((prev) => {
-          const updated = prev.map((session) => {
-            if (session.id !== activeSessionId) {
-              return session;
-            }
-
-            let inferredTitle = session.title;
-            if (session.title === DEFAULT_SESSION_TITLE) {
-              const messageContent = data.userMessage.content.trim();
-              if (messageContent.length > 0) {
-                inferredTitle =
-                  messageContent.length > 60
-                    ? `${messageContent.slice(0, 60).trim()}…`
-                    : messageContent;
+          setSessions((previous) => {
+            let found = false;
+            const updated = previous.map((session) => {
+              if (session.id !== targetSessionId) {
+                return session;
               }
+
+              found = true;
+              let inferredTitle = session.title;
+              if (session.title === DEFAULT_SESSION_TITLE) {
+                const contentForTitle = normalizedMessage.content.trim();
+                if (contentForTitle.length > 0) {
+                  inferredTitle =
+                    contentForTitle.length > 60
+                      ? `${contentForTitle.slice(0, 60).trim()}…`
+                      : contentForTitle;
+                }
+              }
+
+              return {
+                ...session,
+                title: inferredTitle,
+                updatedAt: normalizedMessage.createdAt
+              };
+            });
+
+            if (!found) {
+              updated.push({
+                id: targetSessionId,
+                title: normalizedMessage.content.trim().length > 0
+                  ? normalizedMessage.content.trim()
+                  : DEFAULT_SESSION_TITLE,
+                codexThreadId: null,
+                createdAt: normalizedMessage.createdAt,
+                updatedAt: normalizedMessage.createdAt
+              });
             }
 
-            return {
-              ...session,
-              title: inferredTitle,
-              codexThreadId: data.threadId ?? session.codexThreadId,
-              updatedAt: data.assistantMessage.createdAt
+            return sortSessions(updated);
+          });
+          continue;
+        }
+
+        if (streamEvent.type === 'assistant_message_snapshot') {
+          if (viewingTargetSession) {
+            const normalizedMessage: Message = {
+              ...streamEvent.message,
+              attachments: streamEvent.message.attachments ?? [],
+              items: streamEvent.message.items ?? []
             };
+
+            setMessages((previous) => {
+              const existingIndex = previous.findIndex((message) => message.id === normalizedMessage.id);
+              if (existingIndex >= 0) {
+                const nextMessages = [...previous];
+                nextMessages[existingIndex] = normalizedMessage;
+                return nextMessages;
+              }
+              return [...previous, normalizedMessage];
+            });
+          }
+          continue;
+        }
+
+        if (streamEvent.type === 'assistant_message_final') {
+          const normalizedMessage: Message = {
+            ...streamEvent.message,
+            attachments: streamEvent.message.attachments ?? [],
+            items: streamEvent.message.items ?? []
+          };
+
+          if (viewingTargetSession) {
+            setMessages((previous) => {
+              const nextMessages = [...previous];
+              const tempIndex = nextMessages.findIndex(
+                (message) => message.id === streamEvent.temporaryId
+              );
+              if (tempIndex >= 0) {
+                nextMessages.splice(tempIndex, 1, normalizedMessage);
+              } else {
+                nextMessages.push(normalizedMessage);
+              }
+              return nextMessages;
+            });
+          }
+
+          setReasoningExpandedByMessageId((previous) => {
+            if (streamEvent.temporaryId === normalizedMessage.id) {
+              return previous;
+            }
+
+            const next = { ...previous };
+            if (previous[streamEvent.temporaryId] !== undefined) {
+              next[normalizedMessage.id] = previous[streamEvent.temporaryId];
+            }
+            if (streamEvent.temporaryId in next) {
+              delete next[streamEvent.temporaryId];
+            }
+            return next;
           });
 
-          return sortSessions(updated);
-        });
-      } else {
-        const { error } = result;
-        const body = error.body;
+          setSessions((previous) => {
+            let found = false;
+            const updated = previous.map((session) => {
+              if (session.id !== streamEvent.session.id) {
+                return session;
+              }
 
-        if (body && typeof body === 'object' && 'userMessage' in body) {
-          const apiBody = body as PostMessageErrorResponse;
-          const normalizedErrorMessage = {
-            ...apiBody.userMessage,
-            attachments: apiBody.userMessage.attachments ?? []
-          };
-          setMessages((prev) => [
-            ...prev,
-            normalizedErrorMessage,
-            {
-              id: `error-${Date.now()}`,
-              role: 'system',
-              content: `Codex error: ${apiBody.message}`,
-              createdAt: new Date().toISOString(),
-              attachments: []
+              found = true;
+              return {
+                ...session,
+                title: streamEvent.session.title,
+                codexThreadId: streamEvent.session.codexThreadId,
+                updatedAt: streamEvent.session.updatedAt
+              };
+            });
+
+            if (!found) {
+              updated.push(streamEvent.session);
             }
-          ]);
-          setSessions((prev) => sortSessions(prev));
-          setErrorNotice(apiBody.message);
-        } else {
-          console.error('Unexpected error body', error);
-          setErrorNotice('Unexpected error from Codex.');
+
+            return sortSessions(updated);
+          });
+          continue;
+        }
+
+        if (streamEvent.type === 'error') {
+          const tempId = streamEvent.temporaryId;
+          if (tempId && viewingTargetSession) {
+            setMessages((previous) =>
+              previous.filter((message) => message.id !== tempId)
+            );
+          }
+
+          if (tempId) {
+            setReasoningExpandedByMessageId((previous) => {
+              if (!(tempId in previous)) {
+                return previous;
+              }
+              const next = { ...previous };
+              delete next[tempId];
+              return next;
+            });
+          }
+
+          if (viewingTargetSession) {
+            setMessages((previous) => [
+              ...previous,
+              {
+                id: `error-${Date.now()}`,
+                role: 'system',
+                content: `Codex error: ${streamEvent.message}`,
+                createdAt: new Date().toISOString(),
+                attachments: []
+              }
+            ]);
+          }
+
+          setSessions((previous) => sortSessions(previous));
+          setErrorNotice(streamEvent.message);
+          streamCompleted = true;
+        }
+
+        if (streamEvent.type === 'done') {
+          streamCompleted = true;
+        }
+
+        if (streamCompleted) {
+          break;
         }
       }
     } catch (error) {
-      console.error('Failed to send message', error);
-      setErrorNotice('Failed to send message. Check your connection and try again.');
+      if (error instanceof ApiError) {
+        const body = error.body;
+        if (body && typeof body === 'object' && 'userMessage' in body) {
+          const apiBody = body as PostMessageErrorResponse;
+          const normalizedErrorMessage: Message = {
+            ...apiBody.userMessage,
+            attachments: apiBody.userMessage.attachments ?? [],
+            items: apiBody.userMessage.items ?? []
+          };
+
+          if (activeSessionIdRef.current === targetSessionId) {
+            setMessages((previous) => [
+              ...previous,
+              normalizedErrorMessage,
+              {
+                id: `error-${Date.now()}`,
+                role: 'system',
+                content: `Codex error: ${apiBody.message}`,
+                createdAt: new Date().toISOString(),
+                attachments: []
+              }
+            ]);
+          }
+
+          setSessions((previous) => sortSessions(previous));
+          setErrorNotice(apiBody.message);
+        } else if (body && typeof body === 'object' && 'message' in body) {
+          const bodyMessage = (body as { message?: unknown }).message;
+          if (typeof bodyMessage === 'string' && bodyMessage.length > 0) {
+            setErrorNotice(bodyMessage);
+          } else {
+            setErrorNotice('Unexpected error from Codex.');
+          }
+        } else {
+          setErrorNotice('Unexpected error from Codex.');
+        }
+      } else {
+        console.error('Failed to send message', error);
+        setErrorNotice('Failed to send message. Check your connection and try again.');
+      }
     } finally {
       setSendingMessage(false);
     }

@@ -64,6 +64,31 @@ export type PostMessageErrorResponse = {
   userMessage: Message;
 };
 
+export type PostMessageStreamEvent =
+  | {
+      type: 'user_message';
+      message: Message;
+    }
+  | {
+      type: 'assistant_message_snapshot';
+      message: Message;
+    }
+  | {
+      type: 'assistant_message_final';
+      message: Message;
+      temporaryId: string;
+      session: Session;
+      usage: Usage;
+    }
+  | {
+      type: 'error';
+      message: string;
+      temporaryId?: string;
+    }
+  | {
+      type: 'done';
+    };
+
 export type AppMeta = {
   model: string;
   reasoningEffort: 'low' | 'medium' | 'high';

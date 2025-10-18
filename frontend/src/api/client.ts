@@ -7,6 +7,7 @@ import type {
   Message,
   PostMessageErrorResponse,
   PostMessageSuccessResponse,
+  PostMessageStreamEvent,
   Session
 } from './types';
 
@@ -150,6 +151,96 @@ export async function deleteSession(id: string): Promise<void> {
 export async function fetchMessages(sessionId: string): Promise<Message[]> {
   const data = await request<ListMessagesResponse>(`/api/sessions/${sessionId}/messages`);
   return data.messages.map((message) => normalizeMessage(message));
+}
+
+export async function* streamPostMessage(
+  sessionId: string,
+  payload: {
+    content: string;
+    attachments?: AttachmentUpload[];
+  }
+): AsyncGenerator<PostMessageStreamEvent> {
+  const response = await fetch(`/api/sessions/${sessionId}/messages`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/x-ndjson',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    let errorBody: unknown = null;
+    const contentType = response.headers.get('Content-Type') ?? '';
+    if (contentType.includes('application/json')) {
+      try {
+        errorBody = await response.json();
+      } catch {
+        errorBody = null;
+      }
+    } else {
+      try {
+        const text = await response.text();
+        errorBody = text.length > 0 ? { message: text } : null;
+      } catch {
+        errorBody = null;
+      }
+    }
+    throw new ApiError(response.status, errorBody);
+  }
+
+  if (!response.body) {
+    throw new Error('Streaming responses are not supported in this environment.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const decoderAny: { decode: (...args: any[]) => string } =
+    decoder as unknown as { decode: (...args: any[]) => string };
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        buffer += decoderAny.decode();
+        break;
+      }
+
+      const chunkText = decoderAny.decode(value, { stream: true });
+      buffer += chunkText;
+
+      let newlineIndex = buffer.indexOf('\n');
+      while (newlineIndex !== -1) {
+        const rawLine = buffer.slice(0, newlineIndex);
+        buffer = buffer.slice(newlineIndex + 1);
+        const line = rawLine.trim();
+        if (line.length > 0) {
+          let parsed: PostMessageStreamEvent;
+          try {
+            parsed = JSON.parse(line) as PostMessageStreamEvent;
+          } catch (error) {
+            throw new Error(`Failed to parse stream event: ${line}`);
+          }
+          yield parsed;
+        }
+        newlineIndex = buffer.indexOf('\n');
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const remaining = buffer.trim();
+  if (remaining.length > 0) {
+    let parsed: PostMessageStreamEvent;
+    try {
+      parsed = JSON.parse(remaining) as PostMessageStreamEvent;
+    } catch (error) {
+      throw new Error(`Failed to parse stream event: ${remaining}`);
+    }
+    yield parsed;
+  }
 }
 
 export async function postMessage(

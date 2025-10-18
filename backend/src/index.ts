@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { ThreadItem } from '@openai/codex-sdk';
+import type { ThreadItem, Usage } from '@openai/codex-sdk';
 import {
   addMessage,
   createSession,
@@ -18,6 +18,7 @@ import {
   type SessionRecord
 } from './db';
 import { codexManager } from './codexManager';
+import type { CodexThreadEvent } from './codexManager';
 import { getCodexMeta, updateCodexMeta } from './settings';
 import { z } from 'zod';
 import { ensureWorkspaceDirectory, getWorkspaceDirectory, getWorkspaceRoot } from './workspaces';
@@ -413,62 +414,165 @@ app.post(
       }
     }
 
-    try {
-      let codexInput =
-        content.length > 0
-          ? content
-          : userMessage.attachments.length > 0
-          ? 'The user provided image attachments.'
-          : '';
-      if (userMessage.attachments.length > 0) {
-        const attachmentSummary = userMessage.attachments
-          .map((attachment, index) => {
-            const workspaceRelativePath = attachment.relativePath.startsWith(`${session.id}/`)
-              ? attachment.relativePath.slice(session.id.length + 1)
-              : attachment.relativePath;
-            const absolutePath = path
-              .resolve(getWorkspaceRoot(), attachment.relativePath)
-              .replace(/\\/g, '/');
-            return `${index + 1}. ${attachment.filename} (workspace path: ${workspaceRelativePath}; absolute path: ${absolutePath})`;
-          })
-          .join('\n');
-        codexInput += `\n\nAttachments:\n${attachmentSummary}`;
+    let codexInput =
+      content.length > 0
+        ? content
+        : userMessage.attachments.length > 0
+        ? 'The user provided image attachments.'
+        : '';
+    if (userMessage.attachments.length > 0) {
+      const attachmentSummary = userMessage.attachments
+        .map((attachment, index) => {
+          const workspaceRelativePath = attachment.relativePath.startsWith(`${session.id}/`)
+            ? attachment.relativePath.slice(session.id.length + 1)
+            : attachment.relativePath;
+          const absolutePath = path.resolve(getWorkspaceRoot(), attachment.relativePath).replace(/\\/g, '/');
+          return `${index + 1}. ${attachment.filename} (workspace path: ${workspaceRelativePath}; absolute path: ${absolutePath})`;
+        })
+        .join('\n');
+      codexInput += `\n\nAttachments:\n${attachmentSummary}`;
+    }
+
+    res.status(201);
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    let clientClosed = false;
+    req.on('close', () => {
+      clientClosed = true;
+    });
+
+    const writeEvent = (event: unknown) => {
+      if (clientClosed || res.writableEnded) {
+        return;
       }
+      res.write(`${JSON.stringify(event)}\n`);
+    };
 
-      const { result, threadId } = await codexManager.runTurn(session, codexInput);
+    const userMessagePayload = messageToResponse(userMessage);
+    writeEvent({ type: 'user_message', message: userMessagePayload });
 
-      if (threadId && session.codexThreadId !== threadId) {
-        const updated = updateSessionThreadId(session.id, threadId);
-        if (updated) {
-          session.codexThreadId = updated.codexThreadId;
-          session.updatedAt = updated.updatedAt;
+    const assistantTemporaryId = `temp-${randomUUID()}`;
+    const assistantCreatedAt = new Date().toISOString();
+
+    const itemOrder: string[] = [];
+    const itemMap = new Map<string, ThreadItem>();
+    const completedItems: ThreadItem[] = [];
+    let assistantText = '';
+    let usage: Usage | null = null;
+    let streamError: Error | null = null;
+
+    const snapshotItems = (): ThreadItem[] =>
+      itemOrder
+        .map((id) => itemMap.get(id))
+        .filter((item): item is ThreadItem => item !== undefined);
+
+    const sendSnapshot = () => {
+      const snapshot: MessageResponse = {
+        id: assistantTemporaryId,
+        role: 'assistant',
+        content: assistantText,
+        createdAt: assistantCreatedAt,
+        attachments: [],
+        items: snapshotItems()
+      };
+      writeEvent({
+        type: 'assistant_message_snapshot',
+        message: snapshot
+      });
+    };
+
+    sendSnapshot();
+
+    const handleItemEvent = (item: ThreadItem) => {
+      const itemId = (item as unknown as { id: string }).id;
+      if (!itemOrder.includes(itemId)) {
+        itemOrder.push(itemId);
+      }
+      itemMap.set(itemId, item);
+      if ((item as { type?: unknown }).type === 'agent_message') {
+        const messageText = (item as { text?: unknown }).text;
+        if (typeof messageText === 'string') {
+          assistantText = messageText;
         }
       }
+    };
 
-      const assistantMessage = addMessage(
-        session.id,
-        'assistant',
-        result.finalResponse ?? '',
-        [],
-        result.items ?? []
-      );
+    try {
+      const { events: eventStream } = await codexManager.runTurnStreamed(session, codexInput);
+      for await (const event of eventStream) {
+        if (event.type === 'thread.started') {
+          if (event.thread_id && session.codexThreadId !== event.thread_id) {
+            const updated = updateSessionThreadId(session.id, event.thread_id);
+            if (updated) {
+              session.codexThreadId = updated.codexThreadId;
+              session.updatedAt = updated.updatedAt;
+            }
+          }
+          continue;
+        }
 
-      res.status(201).json({
-        sessionId: session.id,
-        threadId: threadId ?? session.codexThreadId,
-        userMessage: messageToResponse(userMessage),
-        assistantMessage: messageToResponse(assistantMessage),
-        usage: result.usage,
-        items: result.items
-      });
+        if (
+          event.type === 'item.started' ||
+          event.type === 'item.updated' ||
+          event.type === 'item.completed'
+        ) {
+          handleItemEvent(event.item);
+          if (event.type === 'item.completed') {
+            completedItems.push(event.item);
+          }
+          sendSnapshot();
+          continue;
+        }
+
+        if (event.type === 'turn.completed') {
+          usage = event.usage;
+          continue;
+        }
+
+        if (event.type === 'turn.failed') {
+          streamError = new Error(event.error?.message ?? 'Codex turn failed');
+          break;
+        }
+
+        if (event.type === 'error') {
+          streamError = new Error(event.message ?? 'Codex stream error');
+          break;
+        }
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown Codex error';
-      res.status(502).json({
-        error: 'CodexError',
-        message,
-        userMessage: messageToResponse(userMessage)
+      streamError = error instanceof Error ? error : new Error('Codex execution failed');
+    }
+
+    if (streamError) {
+      writeEvent({
+        type: 'error',
+        message: streamError.message,
+        temporaryId: assistantTemporaryId
       });
+      writeEvent({ type: 'done' });
+      if (!clientClosed && !res.writableEnded) {
+        res.end();
+      }
       return;
+    }
+
+    const assistantMessage = addMessage(session.id, 'assistant', assistantText, [], completedItems);
+    const latestSession = getSession(session.id) ?? session;
+
+    writeEvent({
+      type: 'assistant_message_final',
+      temporaryId: assistantTemporaryId,
+      message: messageToResponse(assistantMessage),
+      session: toSessionResponse(latestSession),
+      usage
+    });
+    writeEvent({ type: 'done' });
+    if (!clientClosed && !res.writableEnded) {
+      res.end();
     }
   })
 );

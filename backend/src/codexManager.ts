@@ -1,4 +1,4 @@
-import type { Codex, RunResult, Thread } from '@openai/codex-sdk';
+import type { Codex, RunResult, Thread, ThreadItem, Usage } from '@openai/codex-sdk';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,16 @@ const sandboxMode =
     | 'workspace-write'
     | 'danger-full-access'
     | undefined) ?? 'workspace-write';
+
+export type CodexThreadEvent =
+  | { type: 'thread.started'; thread_id: string }
+  | { type: 'turn.started' }
+  | { type: 'turn.completed'; usage: Usage }
+  | { type: 'turn.failed'; error: { message: string } | null }
+  | { type: 'error'; message: string }
+  | { type: 'item.started'; item: ThreadItem }
+  | { type: 'item.updated'; item: ThreadItem }
+  | { type: 'item.completed'; item: ThreadItem };
 
 class CodexManager {
   private codexInstance: Codex | null = null;
@@ -103,6 +113,17 @@ class CodexManager {
     const thread = await this.ensureThread(session);
     const result = await thread.run(input);
     return { result, threadId: thread.id };
+  }
+
+  async runTurnStreamed(
+    session: SessionRecord,
+    input: string
+  ): Promise<{ events: AsyncGenerator<CodexThreadEvent>; thread: Thread }> {
+    const thread = await this.ensureThread(session);
+    const streamed = await (thread as unknown as {
+      runStreamed: (input: string) => Promise<{ events: AsyncGenerator<CodexThreadEvent> }>;
+    }).runStreamed(input);
+    return { events: streamed.events, thread };
   }
 
   forgetSession(sessionId: string) {
