@@ -146,7 +146,8 @@ function App() {
   const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
   const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
   const [chatViewMode, setChatViewMode] = useState<'formatted' | 'detailed' | 'raw'>('formatted');
-  const [reasoningExpandedByMessageId, setReasoningExpandedByMessageId] = useState<Record<string, boolean>>({});
+  const [reasoningExpandedByMessageId, setReasoningExpandedByMessageId] =
+    useState<Record<string, Record<string, boolean>>>({});
   const [defaultReasoningExpanded, setDefaultReasoningExpanded] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -174,6 +175,17 @@ function App() {
         <a {...props} target="_blank" rel="noreferrer" />
       )
     }),
+    []
+  );
+
+  const resolveReasoningEntryKey = useCallback(
+    (messageId: string, item: TurnItem, index: number) => {
+      const record = item as Record<string, unknown>;
+      const itemIdValue = record.id;
+      return typeof itemIdValue === 'string' && itemIdValue.length > 0
+        ? itemIdValue
+        : `${messageId}-item-${index}`;
+    },
     []
   );
 
@@ -269,21 +281,59 @@ function App() {
 
     setReasoningExpandedByMessageId((previous) => {
       let changed = false;
-      const nextState = { ...previous };
+      const nextState: Record<string, Record<string, boolean>> = { ...previous };
+      const validMessageIds = new Set<string>();
+
       for (const message of messages) {
-        if (
-          message.role === 'assistant' &&
-          (message.items?.length ?? 0) > 0 &&
-          nextState[message.id] === undefined
-        ) {
-          nextState[message.id] = defaultReasoningExpanded;
+        if (message.role !== 'assistant' || !message.items?.length) {
+          continue;
+        }
+
+        const reasoningItems = message.items.filter(
+          (item) => typeof item.type === 'string' && item.type === 'reasoning'
+        );
+
+        if (reasoningItems.length === 0) {
+          continue;
+        }
+
+        validMessageIds.add(message.id);
+
+        const existingForMessage = nextState[message.id] ?? {};
+        let messageState = existingForMessage;
+        let messageStateChanged = false;
+
+        reasoningItems.forEach((item, index) => {
+          const key = resolveReasoningEntryKey(message.id, item, index);
+          if (messageState[key] === undefined) {
+            if (!messageStateChanged) {
+              messageState =
+                messageState === existingForMessage ? { ...existingForMessage } : messageState;
+              messageStateChanged = true;
+            }
+            messageState[key] = defaultReasoningExpanded;
+          }
+        });
+
+        if (messageStateChanged) {
+          nextState[message.id] = messageState;
+          changed = true;
+        } else if (nextState[message.id] === undefined) {
+          nextState[message.id] = messageState;
+          changed = true;
+        }
+      }
+
+      for (const messageId of Object.keys(nextState)) {
+        if (!validMessageIds.has(messageId)) {
+          delete nextState[messageId];
           changed = true;
         }
       }
 
       return changed ? nextState : previous;
     });
-  }, [messages, defaultReasoningExpanded]);
+  }, [messages, defaultReasoningExpanded, resolveReasoningEntryKey]);
 
   useEffect(() => {
     if (!imagePreview) {
@@ -489,15 +539,23 @@ function App() {
       });
   };
 
-  const handleToggleReasoning = (messageId: string, nextState?: boolean) => {
+  const handleToggleReasoning = (messageId: string, entryKey: string, nextState?: boolean) => {
     setReasoningExpandedByMessageId((previous) => {
-      const current = previous[messageId] ?? defaultReasoningExpanded;
+      const previousForMessage = previous[messageId];
+      const current =
+        (previousForMessage ? previousForMessage[entryKey] : undefined) ?? defaultReasoningExpanded;
       const desired = typeof nextState === 'boolean' ? nextState : !current;
       if (current === desired) {
         return previous;
       }
+
+      const nextForMessage = previousForMessage
+        ? { ...previousForMessage, [entryKey]: desired }
+        : { [entryKey]: desired };
+      const nextStateMap = { ...previous, [messageId]: nextForMessage };
+
       setDefaultReasoningExpanded(desired);
-      return { ...previous, [messageId]: desired };
+      return nextStateMap;
     });
   };
 
@@ -511,99 +569,101 @@ function App() {
           )
         : [];
     const hasReasoning = reasoningEntries.length > 0;
-    const isReasoningExpanded = hasReasoning
-      ? reasoningExpandedByMessageId[message.id] ?? defaultReasoningExpanded
-      : false;
+    const messageReasoningState = reasoningExpandedByMessageId[message.id] ?? {};
+    let anyReasoningExpanded = false;
 
-  const reasoningBlock =
-      hasReasoning && detailed ? (
-        <div
-          className={`message-reasoning${isReasoningExpanded ? ' expanded' : ''}`}
-        >
-          {reasoningEntries.map((item, index) => {
-            const { text, additional, lines } = summarizeReasoningItem(item);
-            const remainingText =
-              lines.length > 1 ? lines.slice(1).join('\n') : '';
-            const hasRemainingText = remainingText.length > 0;
-            const hasAdditional = Boolean(additional && additional.length > 0);
-            const hasCollapsibleContent = hasRemainingText || hasAdditional;
-            const itemRecord = item as Record<string, unknown>;
-            const itemIdValue = itemRecord.id;
-            const key =
-              typeof itemIdValue === 'string' && itemIdValue.length > 0
-                ? itemIdValue
-                : `${message.id}-item-${index}`;
-            const firstLine =
-              lines[0] ??
-              (additional
-                ? 'Additional reasoning details available.'
-                : 'Reasoning details unavailable.');
+    const reasoningContent = hasReasoning
+      ? reasoningEntries.map((item, index) => {
+          const entryKey = resolveReasoningEntryKey(message.id, item, index);
+          const { additional, lines } = summarizeReasoningItem(item);
+          const remainingText =
+            lines.length > 1 ? lines.slice(1).join('\n') : '';
+          const hasRemainingText = remainingText.length > 0;
+          const hasAdditional = Boolean(additional && additional.length > 0);
+          const hasCollapsibleContent = hasRemainingText || hasAdditional;
+          const entryState = messageReasoningState[entryKey] ?? defaultReasoningExpanded;
+          const isEntryExpanded = hasCollapsibleContent ? entryState : false;
+          const firstLine =
+            lines[0] ??
+            (additional
+              ? 'Additional reasoning details available.'
+              : 'Reasoning details unavailable.');
 
-            return (
-              <div
-                key={key}
-                className={`message-reasoning-entry${
-                  hasCollapsibleContent ? ' has-toggle' : ''
+          if (isEntryExpanded) {
+            anyReasoningExpanded = true;
+          }
+
+          return (
+            <div
+              key={entryKey}
+              className={`message-reasoning-entry${
+                hasCollapsibleContent ? ' has-toggle' : ''
+              }`}
+            >
+              <button
+                type="button"
+                className={`message-reasoning-summary${
+                  hasCollapsibleContent ? '' : ' static'
                 }`}
+                onClick={
+                  hasCollapsibleContent
+                    ? () => handleToggleReasoning(message.id, entryKey)
+                    : undefined
+                }
+                aria-expanded={
+                  hasCollapsibleContent ? isEntryExpanded : undefined
+                }
+                aria-label={
+                  hasCollapsibleContent
+                    ? `Toggle reasoning details for step ${index + 1}`
+                    : undefined
+                }
               >
-                <button
-                  type="button"
-                  className={`message-reasoning-summary${
-                    hasCollapsibleContent ? '' : ' static'
-                  }`}
-                  onClick={
-                    hasCollapsibleContent
-                      ? () => handleToggleReasoning(message.id)
-                      : undefined
-                  }
-                  aria-expanded={
-                    hasCollapsibleContent ? isReasoningExpanded : undefined
-                  }
-                  aria-label={
-                    hasCollapsibleContent
-                      ? `Toggle reasoning details for step ${index + 1}`
-                      : undefined
-                  }
+                <ReactMarkdown
+                  className="message-reasoning-text"
+                  remarkPlugins={markdownPlugins}
+                  components={inlineMarkdownComponents}
                 >
-                  <ReactMarkdown
-                    className="message-reasoning-text"
-                    remarkPlugins={markdownPlugins}
-                    components={inlineMarkdownComponents}
-                  >
-                    {firstLine}
-                  </ReactMarkdown>
-                  <span className="message-reasoning-meta">
-                    <span className="message-reasoning-label">
-                      Reasoning{reasoningEntries.length > 1 ? ` ${index + 1}` : ''}
-                    </span>
-                    {hasCollapsibleContent ? (
-                      <span className="message-reasoning-icon" aria-hidden="true">
-                        {isReasoningExpanded ? '▴' : '▾'}
-                      </span>
-                    ) : null}
+                  {firstLine}
+                </ReactMarkdown>
+                <span className="message-reasoning-meta">
+                  <span className="message-reasoning-label">
+                    Reasoning{reasoningEntries.length > 1 ? ` ${index + 1}` : ''}
                   </span>
-                </button>
-                {isReasoningExpanded && hasCollapsibleContent ? (
-                  <div className="message-reasoning-details">
-                    {hasRemainingText ? (
-                      <ReactMarkdown
-                        className="message-reasoning-detail-text"
-                        remarkPlugins={markdownPlugins}
-                        components={blockMarkdownComponents}
-                      >
-                        {remainingText}
-                      </ReactMarkdown>
-                    ) : null}
-                    {hasAdditional && additional ? (
-                      <pre className="message-reasoning-detail-text message-reasoning-detail-json">
-                        {additional}
-                      </pre>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+                  {hasCollapsibleContent ? (
+                    <span className="message-reasoning-icon" aria-hidden="true">
+                      {isEntryExpanded ? '▴' : '▾'}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+              {isEntryExpanded ? (
+                <div className="message-reasoning-details">
+                  {hasRemainingText ? (
+                    <ReactMarkdown
+                      className="message-reasoning-detail-text"
+                      remarkPlugins={markdownPlugins}
+                      components={blockMarkdownComponents}
+                    >
+                      {remainingText}
+                    </ReactMarkdown>
+                  ) : null}
+                  {hasAdditional && additional ? (
+                    <pre className="message-reasoning-detail-text message-reasoning-detail-json">
+                      {additional}
+                    </pre>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          );
+        })
+      : null;
+
+    const reasoningBlock =
+      hasReasoning && detailed && reasoningContent ? (
+        <div className={`message-reasoning${anyReasoningExpanded ? ' expanded' : ''}`}>
+          {reasoningContent}
         </div>
       ) : null;
 
