@@ -536,8 +536,9 @@ textarea {
 .message-reasoning-summary {
   width: 100%;
   display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.65rem 0.95rem;
   background: transparent;
   border: none;
@@ -556,9 +557,34 @@ textarea {
   background: rgba(59, 130, 246, 0.08);
 }
 
+.message-reasoning-summary.static:hover {
+  background: transparent;
+}
+
 .message-reasoning-summary:not(.static):focus-visible {
   outline: 2px solid var(--color-textarea-focus-border);
   outline-offset: 2px;
+}
+
+.message-reasoning-text {
+  flex: 1;
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-reasoning-text > * {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.message-reasoning-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  margin-left: 0.5rem;
 }
 
 .message-reasoning-label {
@@ -566,13 +592,7 @@ textarea {
   text-transform: uppercase;
   font-weight: 600;
   color: var(--color-session-muted-meta);
-  flex-shrink: 0;
-}
-
-.message-reasoning-text {
-  flex: 1;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: nowrap;
 }
 
 .message-reasoning-icon {
@@ -592,16 +612,30 @@ textarea {
 }
 
 .message-reasoning-detail-text {
-  margin: 0;
   font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   font-size: 0.8rem;
   line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
   background: rgba(15, 23, 42, 0.04);
   border-radius: 0.6rem;
   padding: 0.6rem 0.75rem;
   color: inherit;
+}
+
+.message-reasoning-detail-text > *:first-child {
+  margin-top: 0;
+}
+
+.message-reasoning-detail-text > *:last-child {
+  margin-bottom: 0;
+}
+
+.message-reasoning-detail-text ul,
+.message-reasoning-detail-text ol {
+  margin: 0.35rem 0 0.35rem 1.25rem;
+}
+
+.message-reasoning-detail-text code {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
 }
 
 [data-theme='dark'] .message-reasoning-detail-text {

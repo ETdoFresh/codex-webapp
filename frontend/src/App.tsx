@@ -21,6 +21,8 @@ import {
   updateMeta
 } from './api/client';
 import type { AppMeta, Message, PostMessageErrorResponse, Session, TurnItem } from './api/types';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const DEFAULT_SESSION_TITLE = 'New Chat';
 const THEME_STORAGE_KEY = 'codex:theme';
@@ -93,6 +95,9 @@ const summarizeReasoningItem = (
   if ('text' in clone) {
     delete clone.text;
   }
+  if ('id' in clone) {
+    delete clone.id;
+  }
 
   let additional =
     Object.keys(clone).length > 0 ? JSON.stringify(clone, null, 2) : null;
@@ -153,6 +158,24 @@ function App() {
   const rawMessagesJson = useMemo(() => JSON.stringify(messages, null, 2), [messages]);
   const isRawView = chatViewMode === 'raw';
   const isDetailedView = chatViewMode === 'detailed';
+  const markdownPlugins = useMemo(() => [remarkGfm], []);
+  const inlineMarkdownComponents = useMemo<Components>(
+    () => ({
+      p: ({ node, ...props }) => <span {...props} />,
+      a: ({ node, ...props }) => (
+        <a {...props} target="_blank" rel="noreferrer" />
+      )
+    }),
+    []
+  );
+  const blockMarkdownComponents = useMemo<Components>(
+    () => ({
+      a: ({ node, ...props }) => (
+        <a {...props} target="_blank" rel="noreferrer" />
+      )
+    }),
+    []
+  );
 
   useEffect(() => {
     let canceled = false;
@@ -492,7 +515,7 @@ function App() {
       ? reasoningExpandedByMessageId[message.id] ?? defaultReasoningExpanded
       : false;
 
-    const reasoningBlock =
+  const reasoningBlock =
       hasReasoning && detailed ? (
         <div
           className={`message-reasoning${isReasoningExpanded ? ' expanded' : ''}`}
@@ -542,22 +565,34 @@ function App() {
                       : undefined
                   }
                 >
-                  <span className="message-reasoning-label">
-                    Reasoning{reasoningEntries.length > 1 ? ` ${index + 1}` : ''}
-                  </span>
-                  <span className="message-reasoning-text">{firstLine}</span>
-                  {hasCollapsibleContent ? (
-                    <span className="message-reasoning-icon" aria-hidden="true">
-                      {isReasoningExpanded ? '▴' : '▾'}
+                  <ReactMarkdown
+                    className="message-reasoning-text"
+                    remarkPlugins={markdownPlugins}
+                    components={inlineMarkdownComponents}
+                  >
+                    {firstLine}
+                  </ReactMarkdown>
+                  <span className="message-reasoning-meta">
+                    <span className="message-reasoning-label">
+                      Reasoning{reasoningEntries.length > 1 ? ` ${index + 1}` : ''}
                     </span>
-                  ) : null}
+                    {hasCollapsibleContent ? (
+                      <span className="message-reasoning-icon" aria-hidden="true">
+                        {isReasoningExpanded ? '▴' : '▾'}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
                 {isReasoningExpanded && hasCollapsibleContent ? (
                   <div className="message-reasoning-details">
                     {hasRemainingText ? (
-                      <pre className="message-reasoning-detail-text">
+                      <ReactMarkdown
+                        className="message-reasoning-detail-text"
+                        remarkPlugins={markdownPlugins}
+                        components={blockMarkdownComponents}
+                      >
                         {remainingText}
-                      </pre>
+                      </ReactMarkdown>
                     ) : null}
                     {hasAdditional && additional ? (
                       <pre className="message-reasoning-detail-text message-reasoning-detail-json">
