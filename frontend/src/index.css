@@ -519,85 +519,79 @@ textarea {
 }
 
 .message-reasoning {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--color-message-border);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
 }
 
-.message-reasoning-toggle {
-  align-self: flex-start;
-  background: var(--color-ghost-button-bg);
-  border: 1px solid var(--color-toggle-border);
-  color: var(--color-toggle-text);
-  border-radius: 999px;
-  padding: 0.3rem 0.85rem;
-  font-size: 0.8rem;
-  font-weight: 600;
+.message-reasoning-entry {
+  border: 1px solid var(--color-placeholder-border);
+  border-radius: 0.9rem;
+  background: var(--color-placeholder-bg);
+  box-shadow: var(--shadow-placeholder);
+  overflow: hidden;
+}
+
+.message-reasoning-summary {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.65rem 0.95rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  font-size: 0.85rem;
+  color: inherit;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
-.message-reasoning-toggle:hover {
-  background: var(--color-ghost-button-hover-bg);
+.message-reasoning-summary.static {
+  cursor: default;
 }
 
-.message-reasoning-toggle:focus-visible {
+.message-reasoning-summary:not(.static):hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.message-reasoning-summary:not(.static):focus-visible {
   outline: 2px solid var(--color-textarea-focus-border);
   outline-offset: 2px;
 }
 
-.message-reasoning-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.message-reasoning-item {
-  background: var(--color-placeholder-bg);
-  border: 1px solid var(--color-placeholder-border);
-  border-radius: 0.9rem;
-  padding: 0.75rem 1rem;
-  box-shadow: var(--shadow-placeholder);
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.message-reasoning-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.message-reasoning-item-step {
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--color-session-muted-meta);
-}
-
-.message-reasoning-item-type {
+.message-reasoning-label {
   font-size: 0.75rem;
-  background: rgba(59, 130, 246, 0.15);
-  color: #1d4ed8;
-  padding: 0.2rem 0.5rem;
-  border-radius: 0.6rem;
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-session-muted-meta);
+  flex-shrink: 0;
 }
 
-[data-theme='dark'] .message-reasoning-item-type {
-  background: rgba(96, 165, 250, 0.25);
-  color: #bfdbfe;
+.message-reasoning-text {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.message-reasoning-item-content {
+.message-reasoning-icon {
+  font-size: 0.75rem;
+  color: var(--color-session-muted-meta);
+  margin-left: 0.35rem;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.message-reasoning-details {
+  padding: 0 0.95rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border-top: 1px solid var(--color-placeholder-border);
+}
+
+.message-reasoning-detail-text {
   margin: 0;
   font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   font-size: 0.8rem;
@@ -605,20 +599,20 @@ textarea {
   white-space: pre-wrap;
   word-break: break-word;
   background: rgba(15, 23, 42, 0.04);
-  border-radius: 0.65rem;
+  border-radius: 0.6rem;
   padding: 0.6rem 0.75rem;
   color: inherit;
 }
 
-[data-theme='dark'] .message-reasoning-item-content {
+[data-theme='dark'] .message-reasoning-detail-text {
   background: rgba(148, 163, 184, 0.12);
 }
 
-.message-reasoning-item-content-json {
+.message-reasoning-detail-json {
   background: rgba(15, 23, 42, 0.06);
 }
 
-[data-theme='dark'] .message-reasoning-item-content-json {
+[data-theme='dark'] .message-reasoning-detail-json {
   background: rgba(148, 163, 184, 0.16);
 }
 

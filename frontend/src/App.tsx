@@ -81,7 +81,7 @@ const formatFileSize = (bytes: number): string => {
 
 const summarizeReasoningItem = (
   item: TurnItem
-): { text: string | null; additional: string | null } => {
+): { text: string | null; additional: string | null; lines: string[] } => {
   const record = item as Record<string, unknown>;
   const rawText = record.text;
   const candidateText = typeof rawText === 'string' ? rawText.trim() : '';
@@ -101,7 +101,9 @@ const summarizeReasoningItem = (
     additional = JSON.stringify(item, null, 2);
   }
 
-  return { text, additional };
+  const lines = text ? text.split(/\r?\n/) : [];
+
+  return { text, additional, lines };
 };
 
 const sessionDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -478,12 +480,97 @@ function App() {
 
   const renderMessage = (message: Message, detailed: boolean) => {
     const attachments = message.attachments ?? [];
-    const reasoningItems = message.items ?? [];
-    const hasReasoning =
-      detailed && message.role === 'assistant' && reasoningItems.length > 0;
+    const allItems = message.items ?? [];
+    const reasoningEntries =
+      detailed && message.role === 'assistant'
+        ? allItems.filter(
+            (item) => typeof item.type === 'string' && item.type === 'reasoning'
+          )
+        : [];
+    const hasReasoning = reasoningEntries.length > 0;
     const isReasoningExpanded = hasReasoning
       ? reasoningExpandedByMessageId[message.id] ?? defaultReasoningExpanded
       : false;
+
+    const reasoningBlock =
+      hasReasoning && detailed ? (
+        <div
+          className={`message-reasoning${isReasoningExpanded ? ' expanded' : ''}`}
+        >
+          {reasoningEntries.map((item, index) => {
+            const { text, additional, lines } = summarizeReasoningItem(item);
+            const remainingText =
+              lines.length > 1 ? lines.slice(1).join('\n') : '';
+            const hasRemainingText = remainingText.length > 0;
+            const hasAdditional = Boolean(additional && additional.length > 0);
+            const hasCollapsibleContent = hasRemainingText || hasAdditional;
+            const itemRecord = item as Record<string, unknown>;
+            const itemIdValue = itemRecord.id;
+            const key =
+              typeof itemIdValue === 'string' && itemIdValue.length > 0
+                ? itemIdValue
+                : `${message.id}-item-${index}`;
+            const firstLine =
+              lines[0] ??
+              (additional
+                ? 'Additional reasoning details available.'
+                : 'Reasoning details unavailable.');
+
+            return (
+              <div
+                key={key}
+                className={`message-reasoning-entry${
+                  hasCollapsibleContent ? ' has-toggle' : ''
+                }`}
+              >
+                <button
+                  type="button"
+                  className={`message-reasoning-summary${
+                    hasCollapsibleContent ? '' : ' static'
+                  }`}
+                  onClick={
+                    hasCollapsibleContent
+                      ? () => handleToggleReasoning(message.id)
+                      : undefined
+                  }
+                  aria-expanded={
+                    hasCollapsibleContent ? isReasoningExpanded : undefined
+                  }
+                  aria-label={
+                    hasCollapsibleContent
+                      ? `Toggle reasoning details for step ${index + 1}`
+                      : undefined
+                  }
+                >
+                  <span className="message-reasoning-label">
+                    Reasoning{reasoningEntries.length > 1 ? ` ${index + 1}` : ''}
+                  </span>
+                  <span className="message-reasoning-text">{firstLine}</span>
+                  {hasCollapsibleContent ? (
+                    <span className="message-reasoning-icon" aria-hidden="true">
+                      {isReasoningExpanded ? '▴' : '▾'}
+                    </span>
+                  ) : null}
+                </button>
+                {isReasoningExpanded && hasCollapsibleContent ? (
+                  <div className="message-reasoning-details">
+                    {hasRemainingText ? (
+                      <pre className="message-reasoning-detail-text">
+                        {remainingText}
+                      </pre>
+                    ) : null}
+                    {hasAdditional && additional ? (
+                      <pre className="message-reasoning-detail-text message-reasoning-detail-json">
+                        {additional}
+                      </pre>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null;
 
     return (
       <article key={message.id} className={`message message-${message.role}`}>
@@ -499,6 +586,7 @@ function App() {
             {messageTimeFormatter.format(new Date(message.createdAt))}
           </span>
         </header>
+        {reasoningBlock}
         <pre className="message-content">{message.content}</pre>
         {attachments.length > 0 ? (
           <div className="message-attachments">
@@ -555,55 +643,6 @@ function App() {
                 </figcaption>
               </figure>
             ))}
-          </div>
-        ) : null}
-        {hasReasoning ? (
-          <div className="message-reasoning">
-            <button
-              type="button"
-              className="message-reasoning-toggle"
-              onClick={() => handleToggleReasoning(message.id)}
-              aria-expanded={isReasoningExpanded}
-            >
-              {isReasoningExpanded ? 'Hide reasoning' : 'Show reasoning'}
-            </button>
-            {isReasoningExpanded ? (
-              <ol className="message-reasoning-list">
-                {reasoningItems.map((item, index) => {
-                  const itemRecord = item as Record<string, unknown>;
-                  const itemIdValue = itemRecord.id;
-                  const key =
-                    typeof itemIdValue === 'string' && itemIdValue.length > 0
-                      ? itemIdValue
-                      : `${message.id}-item-${index}`;
-                  const { text, additional } = summarizeReasoningItem(item);
-                  return (
-                    <li key={key} className="message-reasoning-item">
-                      <header className="message-reasoning-item-header">
-                        <span className="message-reasoning-item-step">
-                          Step {index + 1}
-                        </span>
-                        <code className="message-reasoning-item-type">
-                          {typeof item.type === 'string' && item.type.length > 0
-                            ? item.type
-                            : 'unknown'}
-                        </code>
-                      </header>
-                      {text ? (
-                        <pre className="message-reasoning-item-content">
-                          {text}
-                        </pre>
-                      ) : null}
-                      {additional ? (
-                        <pre className="message-reasoning-item-content message-reasoning-item-content-json">
-                          {additional}
-                        </pre>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : null}
           </div>
         ) : null}
       </article>
