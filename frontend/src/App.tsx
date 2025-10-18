@@ -588,6 +588,7 @@ function App() {
             (additional
               ? 'Additional reasoning details available.'
               : 'Reasoning details unavailable.');
+          const labelText = `#${index + 1}`;
 
           if (isEntryExpanded) {
             anyReasoningExpanded = true;
@@ -628,7 +629,7 @@ function App() {
                 </ReactMarkdown>
                 <span className="message-reasoning-meta">
                   <span className="message-reasoning-label">
-                    Reasoning{reasoningEntries.length > 1 ? ` ${index + 1}` : ''}
+                    {labelText}
                   </span>
                   {hasCollapsibleContent ? (
                     <span className="message-reasoning-icon" aria-hidden="true">
