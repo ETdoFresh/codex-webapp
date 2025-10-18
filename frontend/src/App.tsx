@@ -20,7 +20,7 @@ import {
   safePostMessage,
   updateMeta
 } from './api/client';
-import type { AppMeta, Message, PostMessageErrorResponse, Session } from './api/types';
+import type { AppMeta, Message, PostMessageErrorResponse, Session, TurnItem } from './api/types';
 
 const DEFAULT_SESSION_TITLE = 'New Chat';
 const THEME_STORAGE_KEY = 'codex:theme';
@@ -79,6 +79,31 @@ const formatFileSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+const summarizeReasoningItem = (
+  item: TurnItem
+): { text: string | null; additional: string | null } => {
+  const record = item as Record<string, unknown>;
+  const rawText = record.text;
+  const candidateText = typeof rawText === 'string' ? rawText.trim() : '';
+
+  const text = candidateText.length > 0 ? candidateText : null;
+
+  const clone: Record<string, unknown> = { ...item };
+  delete clone.type;
+  if ('text' in clone) {
+    delete clone.text;
+  }
+
+  let additional =
+    Object.keys(clone).length > 0 ? JSON.stringify(clone, null, 2) : null;
+
+  if (!text && !additional) {
+    additional = JSON.stringify(item, null, 2);
+  }
+
+  return { text, additional };
+};
+
 const sessionDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   day: 'numeric',
@@ -113,7 +138,9 @@ function App() {
   const [updatingMeta, setUpdatingMeta] = useState(false);
   const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
   const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
-  const [chatViewMode, setChatViewMode] = useState<'formatted' | 'raw'>('formatted');
+  const [chatViewMode, setChatViewMode] = useState<'formatted' | 'detailed' | 'raw'>('formatted');
+  const [reasoningExpandedByMessageId, setReasoningExpandedByMessageId] = useState<Record<string, boolean>>({});
+  const [defaultReasoningExpanded, setDefaultReasoningExpanded] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -123,6 +150,7 @@ function App() {
   );
   const rawMessagesJson = useMemo(() => JSON.stringify(messages, null, 2), [messages]);
   const isRawView = chatViewMode === 'raw';
+  const isDetailedView = chatViewMode === 'detailed';
 
   useEffect(() => {
     let canceled = false;
@@ -186,7 +214,7 @@ function App() {
   }, [activeSessionId]);
 
   useEffect(() => {
-    if (chatViewMode !== 'formatted') {
+    if (chatViewMode === 'raw') {
       return;
     }
 
@@ -200,6 +228,37 @@ function App() {
   useEffect(() => {
     setComposerAttachments([]);
   }, [activeSessionId]);
+
+  useEffect(() => {
+    setReasoningExpandedByMessageId({});
+    setDefaultReasoningExpanded(false);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      setReasoningExpandedByMessageId((previous) =>
+        Object.keys(previous).length > 0 ? {} : previous
+      );
+      return;
+    }
+
+    setReasoningExpandedByMessageId((previous) => {
+      let changed = false;
+      const nextState = { ...previous };
+      for (const message of messages) {
+        if (
+          message.role === 'assistant' &&
+          (message.items?.length ?? 0) > 0 &&
+          nextState[message.id] === undefined
+        ) {
+          nextState[message.id] = defaultReasoningExpanded;
+          changed = true;
+        }
+      }
+
+      return changed ? nextState : previous;
+    });
+  }, [messages, defaultReasoningExpanded]);
 
   useEffect(() => {
     if (!imagePreview) {
@@ -403,6 +462,152 @@ function App() {
       .finally(() => {
         setUpdatingMeta(false);
       });
+  };
+
+  const handleToggleReasoning = (messageId: string, nextState?: boolean) => {
+    setReasoningExpandedByMessageId((previous) => {
+      const current = previous[messageId] ?? defaultReasoningExpanded;
+      const desired = typeof nextState === 'boolean' ? nextState : !current;
+      if (current === desired) {
+        return previous;
+      }
+      setDefaultReasoningExpanded(desired);
+      return { ...previous, [messageId]: desired };
+    });
+  };
+
+  const renderMessage = (message: Message, detailed: boolean) => {
+    const attachments = message.attachments ?? [];
+    const reasoningItems = message.items ?? [];
+    const hasReasoning =
+      detailed && message.role === 'assistant' && reasoningItems.length > 0;
+    const isReasoningExpanded = hasReasoning
+      ? reasoningExpandedByMessageId[message.id] ?? defaultReasoningExpanded
+      : false;
+
+    return (
+      <article key={message.id} className={`message message-${message.role}`}>
+        <header className="message-meta">
+          <span className="message-role">
+            {message.role === 'assistant'
+              ? 'Codex'
+              : message.role === 'user'
+              ? 'You'
+              : 'System'}
+          </span>
+          <span className="message-timestamp">
+            {messageTimeFormatter.format(new Date(message.createdAt))}
+          </span>
+        </header>
+        <pre className="message-content">{message.content}</pre>
+        {attachments.length > 0 ? (
+          <div className="message-attachments">
+            {attachments.map((attachment) => (
+              <figure key={attachment.id} className="message-attachment">
+                {attachment.mimeType.startsWith('image/') ? (
+                  <button
+                    type="button"
+                    className="message-attachment-image"
+                    onClick={() =>
+                      setImagePreview({
+                        url: attachment.url,
+                        filename: attachment.filename
+                      })
+                    }
+                    aria-label={`Preview ${attachment.filename}`}
+                  >
+                    <img src={attachment.url} alt={attachment.filename} />
+                  </button>
+                ) : (
+                  <a
+                    href={attachment.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="message-attachment-file"
+                  >
+                    📎
+                  </a>
+                )}
+                <figcaption>
+                  {attachment.mimeType.startsWith('image/') ? (
+                    <button
+                      type="button"
+                      className="message-attachment-filename-button"
+                      onClick={() =>
+                        setImagePreview({
+                          url: attachment.url,
+                          filename: attachment.filename
+                        })
+                      }
+                    >
+                      {attachment.filename}
+                    </button>
+                  ) : (
+                    <a
+                      href={attachment.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {attachment.filename}
+                    </a>
+                  )}
+                  <span>{formatFileSize(attachment.size)}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        ) : null}
+        {hasReasoning ? (
+          <div className="message-reasoning">
+            <button
+              type="button"
+              className="message-reasoning-toggle"
+              onClick={() => handleToggleReasoning(message.id)}
+              aria-expanded={isReasoningExpanded}
+            >
+              {isReasoningExpanded ? 'Hide reasoning' : 'Show reasoning'}
+            </button>
+            {isReasoningExpanded ? (
+              <ol className="message-reasoning-list">
+                {reasoningItems.map((item, index) => {
+                  const itemRecord = item as Record<string, unknown>;
+                  const itemIdValue = itemRecord.id;
+                  const key =
+                    typeof itemIdValue === 'string' && itemIdValue.length > 0
+                      ? itemIdValue
+                      : `${message.id}-item-${index}`;
+                  const { text, additional } = summarizeReasoningItem(item);
+                  return (
+                    <li key={key} className="message-reasoning-item">
+                      <header className="message-reasoning-item-header">
+                        <span className="message-reasoning-item-step">
+                          Step {index + 1}
+                        </span>
+                        <code className="message-reasoning-item-type">
+                          {typeof item.type === 'string' && item.type.length > 0
+                            ? item.type
+                            : 'unknown'}
+                        </code>
+                      </header>
+                      {text ? (
+                        <pre className="message-reasoning-item-content">
+                          {text}
+                        </pre>
+                      ) : null}
+                      {additional ? (
+                        <pre className="message-reasoning-item-content message-reasoning-item-content-json">
+                          {additional}
+                        </pre>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : null}
+          </div>
+        ) : null}
+      </article>
+    );
   };
 
   const handleReasoningEffortChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -706,11 +911,21 @@ function App() {
                 <div className="chat-view-toggle" role="group" aria-label="Chat display mode">
                   <button
                     type="button"
-                    className={`chat-view-toggle-button${!isRawView ? ' active' : ''}`}
+                    className={`chat-view-toggle-button${
+                      chatViewMode === 'formatted' ? ' active' : ''
+                    }`}
                     onClick={() => setChatViewMode('formatted')}
-                    aria-pressed={!isRawView}
+                    aria-pressed={chatViewMode === 'formatted'}
                   >
                     Chat Output
+                  </button>
+                  <button
+                    type="button"
+                    className={`chat-view-toggle-button${isDetailedView ? ' active' : ''}`}
+                    onClick={() => setChatViewMode('detailed')}
+                    aria-pressed={isDetailedView}
+                  >
+                    Detailed Output
                   </button>
                   <button
                     type="button"
@@ -723,13 +938,31 @@ function App() {
                 </div>
               </header>
 
-              <div className={`message-panel${isRawView ? ' message-panel-raw' : ''}`}>
+              <div
+                className={`message-panel${isRawView ? ' message-panel-raw' : ''}${
+                  isDetailedView ? ' message-panel-detailed' : ''
+                }`}
+              >
                 {isRawView ? (
                   loadingMessages ? (
                     <div className="message-placeholder">Loading conversation…</div>
                   ) : (
-                    <pre className="message-raw-json" aria-label="Conversation as JSON">{rawMessagesJson}</pre>
+                    <pre className="message-raw-json" aria-label="Conversation as JSON">
+                      {rawMessagesJson}
+                    </pre>
                   )
+                ) : isDetailedView ? (
+                  <div className="message-list message-list-detailed" ref={messageListRef}>
+                    {loadingMessages ? (
+                      <div className="message-placeholder">Loading conversation…</div>
+                    ) : messages.length === 0 ? (
+                      <div className="message-placeholder">
+                        Send a message to kick off this conversation.
+                      </div>
+                    ) : (
+                      messages.map((message) => renderMessage(message, true))
+                    )}
+                  </div>
                 ) : (
                   <div className="message-list" ref={messageListRef}>
                     {loadingMessages ? (
@@ -739,86 +972,7 @@ function App() {
                         Send a message to kick off this conversation.
                       </div>
                     ) : (
-                      messages.map((message) => {
-                        const attachments = message.attachments ?? [];
-                        return (
-                          <article
-                            key={message.id}
-                            className={`message message-${message.role}`}
-                          >
-                            <header className="message-meta">
-                              <span className="message-role">
-                                {message.role === 'assistant'
-                                  ? 'Codex'
-                                  : message.role === 'user'
-                                  ? 'You'
-                                  : 'System'}
-                              </span>
-                              <span className="message-timestamp">
-                                {messageTimeFormatter.format(new Date(message.createdAt))}
-                              </span>
-                            </header>
-                            <pre className="message-content">{message.content}</pre>
-                            {attachments.length > 0 ? (
-                              <div className="message-attachments">
-                                {attachments.map((attachment) => (
-                                  <figure key={attachment.id} className="message-attachment">
-                                    {attachment.mimeType.startsWith('image/') ? (
-                                      <button
-                                        type="button"
-                                        className="message-attachment-image"
-                                        onClick={() =>
-                                          setImagePreview({
-                                            url: attachment.url,
-                                            filename: attachment.filename
-                                          })
-                                        }
-                                        aria-label={`Preview ${attachment.filename}`}
-                                      >
-                                        <img src={attachment.url} alt={attachment.filename} />
-                                      </button>
-                                    ) : (
-                                      <a
-                                        href={attachment.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="message-attachment-file"
-                                      >
-                                        📎
-                                      </a>
-                                    )}
-                                    <figcaption>
-                                      {attachment.mimeType.startsWith('image/') ? (
-                                        <button
-                                          type="button"
-                                          className="message-attachment-filename-button"
-                                          onClick={() =>
-                                            setImagePreview({
-                                              url: attachment.url,
-                                              filename: attachment.filename
-                                            })
-                                          }
-                                        >
-                                          {attachment.filename}
-                                        </button>
-                                      ) : (
-                                        <a
-                                          href={attachment.url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                        >
-                                          {attachment.filename}
-                                        </a>
-                                      )}
-                                      <span>{formatFileSize(attachment.size)}</span>
-                                    </figcaption>
-                                  </figure>
-                                ))}
-                              </div>
-                            ) : null}
-                          </article>
-                        );
-                      })
+                      messages.map((message) => renderMessage(message, false))
                     )}
                   </div>
                 )}
