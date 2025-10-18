@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import type { ThreadItem } from '@openai/codex-sdk';
 import {
   addMessage,
   createSession,
@@ -136,6 +137,7 @@ type MessageResponse = {
   content: string;
   createdAt: string;
   attachments: AttachmentResponse[];
+  items: ThreadItem[];
 };
 
 const toSessionResponse = (session: SessionRecord): SessionResponse => ({
@@ -160,7 +162,8 @@ const messageToResponse = (message: MessageWithAttachments): MessageResponse => 
   role: message.role,
   content: message.content,
   createdAt: message.createdAt,
-  attachments: message.attachments.map(attachmentToResponse)
+  attachments: message.attachments.map(attachmentToResponse),
+  items: message.items ?? []
 });
 
 app.get('/health', async (_req: Request, res: Response) => {
@@ -446,7 +449,8 @@ app.post(
         session.id,
         'assistant',
         result.finalResponse ?? '',
-        []
+        [],
+        result.items ?? []
       );
 
       res.status(201).json({

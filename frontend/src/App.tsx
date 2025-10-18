@@ -113,6 +113,7 @@ function App() {
   const [updatingMeta, setUpdatingMeta] = useState(false);
   const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
   const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
+  const [chatViewMode, setChatViewMode] = useState<'formatted' | 'raw'>('formatted');
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -120,6 +121,8 @@ function App() {
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
     [sessions, activeSessionId]
   );
+  const rawMessagesJson = useMemo(() => JSON.stringify(messages, null, 2), [messages]);
+  const isRawView = chatViewMode === 'raw';
 
   useEffect(() => {
     let canceled = false;
@@ -183,12 +186,16 @@ function App() {
   }, [activeSessionId]);
 
   useEffect(() => {
+    if (chatViewMode !== 'formatted') {
+      return;
+    }
+
     const container = messageListRef.current;
     if (!container) {
       return;
     }
     container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, chatViewMode]);
 
   useEffect(() => {
     setComposerAttachments([]);
@@ -690,105 +697,131 @@ function App() {
           {activeSession ? (
             <>
               <header className="chat-header">
-                <div>
+                <div className="chat-header-title">
                   <h2>{activeSession.title}</h2>
                   <p className="muted">
                     Updated {sessionDateFormatter.format(new Date(activeSession.updatedAt))}
                   </p>
                 </div>
+                <div className="chat-view-toggle" role="group" aria-label="Chat display mode">
+                  <button
+                    type="button"
+                    className={`chat-view-toggle-button${!isRawView ? ' active' : ''}`}
+                    onClick={() => setChatViewMode('formatted')}
+                    aria-pressed={!isRawView}
+                  >
+                    Chat Output
+                  </button>
+                  <button
+                    type="button"
+                    className={`chat-view-toggle-button${isRawView ? ' active' : ''}`}
+                    onClick={() => setChatViewMode('raw')}
+                    aria-pressed={isRawView}
+                  >
+                    Raw JSON
+                  </button>
+                </div>
               </header>
 
-              <div className="message-panel">
-                <div className="message-list" ref={messageListRef}>
-                  {loadingMessages ? (
+              <div className={`message-panel${isRawView ? ' message-panel-raw' : ''}`}>
+                {isRawView ? (
+                  loadingMessages ? (
                     <div className="message-placeholder">Loading conversation…</div>
-                  ) : messages.length === 0 ? (
-                    <div className="message-placeholder">
-                      Send a message to kick off this conversation.
-                    </div>
                   ) : (
-                    messages.map((message) => {
-                      const attachments = message.attachments ?? [];
-                      return (
-                        <article
-                          key={message.id}
-                          className={`message message-${message.role}`}
-                        >
-                          <header className="message-meta">
-                            <span className="message-role">
-                              {message.role === 'assistant'
-                                ? 'Codex'
-                                : message.role === 'user'
-                                ? 'You'
-                                : 'System'}
-                            </span>
-                            <span className="message-timestamp">
-                              {messageTimeFormatter.format(new Date(message.createdAt))}
-                            </span>
-                          </header>
-                          <pre className="message-content">{message.content}</pre>
-                          {attachments.length > 0 ? (
-                            <div className="message-attachments">
-                              {attachments.map((attachment) => (
-                                <figure key={attachment.id} className="message-attachment">
-                                  {attachment.mimeType.startsWith('image/') ? (
-                                    <button
-                                      type="button"
-                                      className="message-attachment-image"
-                                      onClick={() =>
-                                        setImagePreview({
-                                          url: attachment.url,
-                                          filename: attachment.filename
-                                        })
-                                      }
-                                      aria-label={`Preview ${attachment.filename}`}
-                                    >
-                                      <img src={attachment.url} alt={attachment.filename} />
-                                    </button>
-                                  ) : (
-                                    <a
-                                      href={attachment.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="message-attachment-file"
-                                    >
-                                      📎
-                                    </a>
-                                  )}
-                                  <figcaption>
+                    <pre className="message-raw-json" aria-label="Conversation as JSON">{rawMessagesJson}</pre>
+                  )
+                ) : (
+                  <div className="message-list" ref={messageListRef}>
+                    {loadingMessages ? (
+                      <div className="message-placeholder">Loading conversation…</div>
+                    ) : messages.length === 0 ? (
+                      <div className="message-placeholder">
+                        Send a message to kick off this conversation.
+                      </div>
+                    ) : (
+                      messages.map((message) => {
+                        const attachments = message.attachments ?? [];
+                        return (
+                          <article
+                            key={message.id}
+                            className={`message message-${message.role}`}
+                          >
+                            <header className="message-meta">
+                              <span className="message-role">
+                                {message.role === 'assistant'
+                                  ? 'Codex'
+                                  : message.role === 'user'
+                                  ? 'You'
+                                  : 'System'}
+                              </span>
+                              <span className="message-timestamp">
+                                {messageTimeFormatter.format(new Date(message.createdAt))}
+                              </span>
+                            </header>
+                            <pre className="message-content">{message.content}</pre>
+                            {attachments.length > 0 ? (
+                              <div className="message-attachments">
+                                {attachments.map((attachment) => (
+                                  <figure key={attachment.id} className="message-attachment">
                                     {attachment.mimeType.startsWith('image/') ? (
                                       <button
                                         type="button"
-                                        className="message-attachment-filename-button"
+                                        className="message-attachment-image"
                                         onClick={() =>
                                           setImagePreview({
                                             url: attachment.url,
                                             filename: attachment.filename
                                           })
                                         }
+                                        aria-label={`Preview ${attachment.filename}`}
                                       >
-                                        {attachment.filename}
+                                        <img src={attachment.url} alt={attachment.filename} />
                                       </button>
                                     ) : (
                                       <a
                                         href={attachment.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
+                                        className="message-attachment-file"
                                       >
-                                        {attachment.filename}
+                                        📎
                                       </a>
                                     )}
-                                    <span>{formatFileSize(attachment.size)}</span>
-                                  </figcaption>
-                                </figure>
-                              ))}
-                            </div>
-                          ) : null}
-                        </article>
-                      );
-                    })
-                  )}
-                </div>
+                                    <figcaption>
+                                      {attachment.mimeType.startsWith('image/') ? (
+                                        <button
+                                          type="button"
+                                          className="message-attachment-filename-button"
+                                          onClick={() =>
+                                            setImagePreview({
+                                              url: attachment.url,
+                                              filename: attachment.filename
+                                            })
+                                          }
+                                        >
+                                          {attachment.filename}
+                                        </button>
+                                      ) : (
+                                        <a
+                                          href={attachment.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          {attachment.filename}
+                                        </a>
+                                      )}
+                                      <span>{formatFileSize(attachment.size)}</span>
+                                    </figcaption>
+                                  </figure>
+                                ))}
+                              </div>
+                            ) : null}
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
 
               <form className="composer" onSubmit={handleSendMessage}>

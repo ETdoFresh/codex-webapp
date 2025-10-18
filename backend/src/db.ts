@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
+import type { ThreadItem } from '@openai/codex-sdk';
 import {
   ensureWorkspaceDirectory,
   removeWorkspaceDirectory,
@@ -36,8 +37,18 @@ export type AttachmentRecord = {
   createdAt: string;
 };
 
+type RunItemRow = {
+  id: string;
+  messageId: string;
+  sessionId: string;
+  idx: number;
+  payload: string;
+  createdAt: string;
+};
+
 export type MessageWithAttachments = MessageRecord & {
   attachments: AttachmentRecord[];
+  items: ThreadItem[];
 };
 
 export type NewAttachmentInput = {
@@ -108,6 +119,26 @@ const migrations: string[] = [
   `
   CREATE INDEX IF NOT EXISTS idx_message_attachments_session
     ON message_attachments(session_id)
+`,
+  `
+  CREATE TABLE IF NOT EXISTS message_run_items (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    idx INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  )
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_message_run_items_message
+    ON message_run_items(message_id, idx)
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_message_run_items_session
+    ON message_run_items(session_id)
 `
 ];
 
@@ -213,6 +244,32 @@ const insertAttachmentStmt = db.prepare<{
   )
 `);
 
+const insertRunItemStmt = db.prepare<{
+  id: string;
+  messageId: string;
+  sessionId: string;
+  idx: number;
+  payload: string;
+  createdAt: string;
+}>(`
+  INSERT INTO message_run_items (
+    id,
+    message_id,
+    session_id,
+    idx,
+    payload,
+    created_at
+  )
+  VALUES (
+    @id,
+    @messageId,
+    @sessionId,
+    @idx,
+    @payload,
+    @createdAt
+  )
+`);
+
 const listAttachmentsForMessageStmt = db.prepare<{
   messageId: string;
 }, AttachmentRecord>(`
@@ -228,6 +285,21 @@ const listAttachmentsForMessageStmt = db.prepare<{
   FROM message_attachments
   WHERE message_id = @messageId
   ORDER BY created_at ASC
+`);
+
+const listRunItemsForMessageStmt = db.prepare<{
+  messageId: string;
+}, RunItemRow>(`
+  SELECT
+    id,
+    message_id as messageId,
+    session_id as sessionId,
+    idx,
+    payload,
+    created_at as createdAt
+  FROM message_run_items
+  WHERE message_id = @messageId
+  ORDER BY idx ASC
 `);
 
 const getAttachmentStmt = db.prepare<{
@@ -331,7 +403,8 @@ export function addMessage(
   sessionId: string,
   role: MessageRecord['role'],
   content: string,
-  attachments: NewAttachmentInput[] = []
+  attachments: NewAttachmentInput[] = [],
+  items: ThreadItem[] = []
 ): MessageWithAttachments {
   const createdAt = new Date().toISOString();
   const message: MessageRecord = {
@@ -351,6 +424,7 @@ export function addMessage(
   });
 
   const savedAttachments: AttachmentRecord[] = [];
+  const savedItems: ThreadItem[] = [];
 
   for (const attachment of attachments) {
     const record: AttachmentRecord = {
@@ -378,16 +452,45 @@ export function addMessage(
     savedAttachments.push(record);
   }
 
+  items.forEach((item, index) => {
+    const id = uuid();
+    const payload = JSON.stringify(item);
+    insertRunItemStmt.run({
+      id,
+      messageId: message.id,
+      sessionId,
+      idx: index,
+      payload,
+      createdAt
+    });
+    try {
+      savedItems.push(JSON.parse(payload) as ThreadItem);
+    } catch {
+      // Fallback to original item if JSON parse fails unexpectedly.
+      savedItems.push(item);
+    }
+  });
+
   touchSessionStmt.run({ id: sessionId, updatedAt: message.createdAt });
 
-  return { ...message, attachments: savedAttachments };
+  return { ...message, attachments: savedAttachments, items: savedItems };
 }
 
 export function listMessages(sessionId: string): MessageWithAttachments[] {
   const baseMessages = listMessagesStmt.all({ sessionId }) as MessageRecord[];
   return baseMessages.map((message) => ({
     ...message,
-    attachments: listAttachmentsForMessageStmt.all({ messageId: message.id }) ?? []
+    attachments: listAttachmentsForMessageStmt.all({ messageId: message.id }) ?? [],
+    items:
+      listRunItemsForMessageStmt
+        .all({ messageId: message.id })
+        .map((row) => {
+          try {
+            return JSON.parse(row.payload) as ThreadItem;
+          } catch {
+            return { type: 'unknown', value: row.payload } as ThreadItem;
+          }
+        }) ?? []
   }));
 }
 

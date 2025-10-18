@@ -23,6 +23,7 @@ export type Message = {
   content: string;
   createdAt: string;
   attachments: Attachment[];
+  items?: TurnItem[];
 };
 
 export type Usage = {

@@ -48,7 +48,8 @@ export async function fetchSessions(): Promise<Session[]> {
 
 const normalizeMessage = (message: Message): Message => ({
   ...message,
-  attachments: message.attachments ?? []
+  attachments: message.attachments ?? [],
+  items: message.items ?? []
 });
 
 const normalizeReasoningEffort = (value: string | undefined): AppMeta['reasoningEffort'] => {
@@ -180,7 +181,11 @@ export async function safePostMessage(
     const normalized = {
       ...data,
       userMessage: normalizeMessage(data.userMessage),
-      assistantMessage: normalizeMessage(data.assistantMessage)
+      assistantMessage: (() => {
+        const assistant = normalizeMessage(data.assistantMessage);
+        assistant.items = data.items ?? [];
+        return assistant;
+      })()
     };
     return { status: 'ok', data: normalized };
   } catch (error) {

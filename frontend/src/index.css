@@ -397,6 +397,56 @@ textarea {
   min-height: 0;
 }
 
+.chat-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.chat-header-title {
+  min-width: 0;
+}
+
+.chat-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-toggle-border);
+  border-radius: 999px;
+  background: transparent;
+  margin-left: auto;
+}
+
+.chat-view-toggle-button {
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-toggle-text);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-view-toggle-button:hover {
+  background: var(--color-toggle-bg-hover);
+}
+
+.chat-view-toggle-button.active {
+  background: var(--color-button-primary-bg);
+  color: var(--color-button-primary-text);
+  box-shadow: var(--shadow-button-primary);
+}
+
+.chat-view-toggle-button:focus-visible {
+  outline: 2px solid var(--color-textarea-focus-border);
+  outline-offset: 2px;
+}
+
 .chat-header h2 {
   margin: 0 0 0.35rem;
   font-size: 1.4rem;
@@ -416,6 +466,10 @@ textarea {
   background: var(--color-message-bg);
   border: 1px solid var(--color-message-border);
   box-shadow: var(--shadow-message-inset);
+}
+
+.message-panel-raw {
+  padding: 1.25rem 1.5rem;
 }
 
 .message-list {
@@ -439,6 +493,21 @@ textarea {
 
 .message-list::-webkit-scrollbar-track {
   background: var(--color-scroll-track);
+}
+
+.message-raw-json {
+  flex: 1;
+  margin: 0;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background: transparent;
+  border: none;
+  padding: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .message-placeholder {
