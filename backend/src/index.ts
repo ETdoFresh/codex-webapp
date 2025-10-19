@@ -23,6 +23,22 @@ import { getCodexMeta, updateCodexMeta } from './settings';
 import { z } from 'zod';
 import { ensureWorkspaceDirectory, getWorkspaceDirectory, getWorkspaceRoot } from './workspaces';
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __STREAM_DEBUG_EVENTS__:
+    | { sessionId: string; type: unknown }[]
+    | undefined;
+}
+
+const STREAM_EVENT_TIMEOUT_MS = (() => {
+  const raw = Number.parseInt(process.env.CODEX_STREAM_TIMEOUT_MS ?? '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 180_000;
+})();
+
+const streamDebugEvents: { sessionId: string; type: unknown }[] = [];
+// Expose for manual inspection in dev.
+globalThis.__STREAM_DEBUG_EVENTS__ = streamDebugEvents;
+
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024; // 5MB per image
 const MAX_ATTACHMENTS_PER_MESSAGE = 4;
 const allowedImageMimeTypes = new Set([
@@ -333,6 +349,8 @@ app.get(
 app.post(
   '/api/sessions/:id/messages',
   asyncHandler(async (req, res) => {
+    // eslint-disable-next-line no-console
+    console.log('[stream] handler invoked for session', req.params.id);
     const attachmentSchema = z.object({
       filename: z.string().trim().min(1).max(200),
       mimeType: z.string().trim().min(1).max(120),
@@ -440,16 +458,46 @@ app.post(
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
-    let clientClosed = false;
+    const streamDebugLogPath = path.join(getWorkspaceRoot(), '..', 'stream-debug.log');
+    const appendDebugLog = (entry: unknown) => {
+      try {
+        const serialized = typeof entry === 'string' ? entry : JSON.stringify(entry);
+        fs.appendFileSync(
+          streamDebugLogPath,
+          `[${new Date().toISOString()}] ${session.id} ${serialized}\n`
+        );
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[stream] failed to write debug log', error);
+      }
+    };
+
+    let clientAborted = false;
+    req.on('aborted', () => {
+      clientAborted = true;
+      appendDebugLog({ type: 'client_aborted' });
+    });
     req.on('close', () => {
-      clientClosed = true;
+      if (!res.writableEnded) {
+        clientAborted = true;
+        appendDebugLog({ type: 'client_closed_before_finish' });
+      } else {
+        appendDebugLog({ type: 'client_closed_after_finish' });
+      }
     });
 
     const writeEvent = (event: unknown) => {
-      if (clientClosed || res.writableEnded) {
+      streamDebugEvents.push({ sessionId: session.id, type: (event as { type?: unknown })?.type });
+      if (streamDebugEvents.length > 200) {
+        streamDebugEvents.splice(0, streamDebugEvents.length - 200);
+      }
+      appendDebugLog(event);
+      if (clientAborted || res.writableEnded) {
         return;
       }
       res.write(`${JSON.stringify(event)}\n`);
+      const flush = (res as Response & { flush?: () => void }).flush;
+      flush?.call(res);
     };
 
     const userMessagePayload = messageToResponse(userMessage);
@@ -503,7 +551,37 @@ app.post(
 
     try {
       const { events: eventStream } = await codexManager.runTurnStreamed(session, codexInput);
-      for await (const event of eventStream) {
+      const timeoutSymbol = Symbol('stream-timeout');
+      const iterator = eventStream[Symbol.asyncIterator]();
+
+      const nextEvent = async ():
+        Promise<IteratorResult<CodexThreadEvent> | typeof timeoutSymbol> => {
+        let timer: NodeJS.Timeout | null = null;
+        const timeoutPromise = new Promise<typeof timeoutSymbol>((resolve) => {
+          timer = setTimeout(() => resolve(timeoutSymbol), STREAM_EVENT_TIMEOUT_MS);
+        });
+        const result = await Promise.race([iterator.next(), timeoutPromise]);
+        if (timer) {
+          clearTimeout(timer);
+        }
+        return result;
+      };
+
+      while (true) {
+        const result = await nextEvent();
+        if (result === timeoutSymbol) {
+          streamError = new Error(
+            `Codex stream stalled after ${STREAM_EVENT_TIMEOUT_MS}ms without new events.`
+          );
+          break;
+        }
+
+        if (result.done) {
+          break;
+        }
+
+        const event = result.value;
+
         if (event.type === 'thread.started') {
           if (event.thread_id && session.codexThreadId !== event.thread_id) {
             const updated = updateSessionThreadId(session.id, event.thread_id);
@@ -554,7 +632,7 @@ app.post(
         temporaryId: assistantTemporaryId
       });
       writeEvent({ type: 'done' });
-      if (!clientClosed && !res.writableEnded) {
+      if (!clientAborted && !res.writableEnded) {
         res.end();
       }
       return;
@@ -571,9 +649,11 @@ app.post(
       usage
     });
     writeEvent({ type: 'done' });
-    if (!clientClosed && !res.writableEnded) {
+    const endedByServer = !res.writableEnded;
+    if (endedByServer) {
       res.end();
     }
+    appendDebugLog({ type: 'server_closed', clientAborted, endedByServer });
   })
 );
 
@@ -617,6 +697,10 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({
     error: 'InternalServerError'
   });
+});
+
+app.get('/api/debug/stream-events', (_req, res) => {
+  res.json({ events: streamDebugEvents });
 });
 
 const server = app.listen(PORT, () => {
