@@ -169,13 +169,17 @@ export async function handleSessionMessageRequest(
   };
 
   let clientAborted = false;
+  let responseFinished = false;
   req.on('aborted', () => {
     clientAborted = true;
     appendDebugLog({ type: 'client_aborted' });
   });
+  res.on('finish', () => {
+    responseFinished = true;
+    appendDebugLog({ type: 'response_finished' });
+  });
   req.on('close', () => {
-    if (!res.writableEnded) {
-      clientAborted = true;
+    if (!responseFinished && !res.writableEnded) {
       appendDebugLog({ type: 'client_closed_before_finish' });
     } else {
       appendDebugLog({ type: 'client_closed_after_finish' });
@@ -188,7 +192,7 @@ export async function handleSessionMessageRequest(
       type: (event as { type?: unknown })?.type
     });
     appendDebugLog(event);
-    if (clientAborted || res.writableEnded) {
+    if (res.writableEnded) {
       return;
     }
     res.write(`${JSON.stringify(event)}\n`);
