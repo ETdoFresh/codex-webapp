@@ -30,7 +30,7 @@ const rootDir = path.resolve(dirname, '..');
 
 const frontendUrl = mode === 'dev' ? 'http://localhost:5173' : 'http://localhost:4173';
 const backendUrl = 'http://localhost:4000';
-const proxyPort = process.env.PORT ?? '3000';
+const reverseProxyPort = process.env.PORT ?? '3000';
 
 const resolveCodexPath = () => {
   if (process.env.CODEX_PATH && process.env.CODEX_PATH.trim() !== '') {
@@ -77,13 +77,13 @@ const services = [
     }
   },
   {
-    name: 'proxy',
-    cwd: path.join(rootDir, 'proxy'),
+    name: 'reverse-proxy',
+    cwd: path.join(rootDir, 'reverse-proxy'),
     script: mode,
     env: {
       FRONTEND_URL: frontendUrl,
       BACKEND_URL: backendUrl,
-      PORT: proxyPort
+      PORT: reverseProxyPort
     }
   }
 ];
