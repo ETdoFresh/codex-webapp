@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type IWorkspace from './interfaces/IWorkspace';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(dirname, '..');
@@ -11,25 +12,49 @@ const workspaceRoot =
     ? path.resolve(process.env.CODEX_WORKSPACES_ROOT)
     : defaultWorkspaceRoot;
 
-fs.mkdirSync(workspaceRoot, { recursive: true });
+class WorkspaceManager implements IWorkspace {
+  constructor(private readonly root: string) {
+    fs.mkdirSync(this.root, { recursive: true });
+  }
+
+  getWorkspaceRoot(): string {
+    return this.root;
+  }
+
+  getWorkspaceDirectory(sessionId: string): string {
+    return path.join(this.root, sessionId);
+  }
+
+  ensureWorkspaceDirectory(sessionId: string): string {
+    const directory = this.getWorkspaceDirectory(sessionId);
+    fs.mkdirSync(directory, { recursive: true });
+    return directory;
+  }
+
+  removeWorkspaceDirectory(sessionId: string): void {
+    const directory = this.getWorkspaceDirectory(sessionId);
+    if (fs.existsSync(directory)) {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }
+}
+
+export const workspaceManager: IWorkspace = new WorkspaceManager(workspaceRoot);
 
 export function getWorkspaceRoot(): string {
-  return workspaceRoot;
+  return workspaceManager.getWorkspaceRoot();
 }
 
 export function getWorkspaceDirectory(sessionId: string): string {
-  return path.join(workspaceRoot, sessionId);
+  return workspaceManager.getWorkspaceDirectory(sessionId);
 }
 
 export function ensureWorkspaceDirectory(sessionId: string): string {
-  const directory = getWorkspaceDirectory(sessionId);
-  fs.mkdirSync(directory, { recursive: true });
-  return directory;
+  return workspaceManager.ensureWorkspaceDirectory(sessionId);
 }
 
 export function removeWorkspaceDirectory(sessionId: string): void {
-  const directory = getWorkspaceDirectory(sessionId);
-  if (fs.existsSync(directory)) {
-    fs.rmSync(directory, { recursive: true, force: true });
-  }
+  workspaceManager.removeWorkspaceDirectory(sessionId);
 }
+
+export default workspaceManager;

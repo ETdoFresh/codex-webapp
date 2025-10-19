@@ -7,8 +7,8 @@
     "node": ">=18.17.0"
   },
   "scripts": {
-    "install": "npm install --prefix frontend && npm install --prefix backend && npm install --prefix proxy",
-    "build": "npm run build --prefix frontend && npm run build --prefix backend && npm run build --prefix proxy",
+    "install": "npm install --prefix frontend && npm install --prefix backend && npm install --prefix reverse-proxy",
+    "build": "npm run build --prefix frontend && npm run build --prefix backend && npm run build --prefix reverse-proxy",
     "dev": "node scripts/run-services.mjs dev",
     "start": "node scripts/run-services.mjs start"
   }
