@@ -1,41 +1,19 @@
-import Database from 'better-sqlite3';
+import Database, { type Statement } from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuid } from 'uuid';
 import type { ThreadItem } from '@openai/codex-sdk';
-import {
-  ensureWorkspaceDirectory,
-  removeWorkspaceDirectory,
-  getWorkspaceRoot
-} from './workspaces';
-
-export type SessionRecord = {
-  id: string;
-  title: string;
-  codexThreadId: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type MessageRecord = {
-  id: string;
-  sessionId: string;
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-  createdAt: string;
-};
-
-export type AttachmentRecord = {
-  id: string;
-  messageId: string;
-  sessionId: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-  relativePath: string;
-  createdAt: string;
-};
+import type IDatabase from './interfaces/IDatabase';
+import type IWorkspace from './interfaces/IWorkspace';
+import { workspaceManager, getWorkspaceRoot } from './workspaces';
+import type {
+  AttachmentRecord,
+  MessageRecord,
+  MessageWithAttachments,
+  NewAttachmentInput,
+  SessionRecord
+} from './types/database';
 
 type RunItemRow = {
   id: string;
@@ -44,18 +22,6 @@ type RunItemRow = {
   idx: number;
   payload: string;
   createdAt: string;
-};
-
-export type MessageWithAttachments = MessageRecord & {
-  attachments: AttachmentRecord[];
-  items: ThreadItem[];
-};
-
-export type NewAttachmentInput = {
-  filename: string;
-  mimeType: string;
-  size: number;
-  relativePath: string;
 };
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -69,10 +35,6 @@ fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(getWorkspaceRoot(), { recursive: true });
 
 const databasePath = path.join(dataDir, 'chat.db');
-const db = new Database(databasePath);
-
-db.pragma('foreign_keys = ON');
-db.pragma('journal_mode = WAL');
 
 const migrations: string[] = [
   `
@@ -142,362 +104,368 @@ const migrations: string[] = [
 `
 ];
 
-db.transaction(() => {
-  for (const migration of migrations) {
-    db.prepare(migration).run();
-  }
-})();
+class SQLiteDatabase implements IDatabase {
+  private readonly db: Database.Database;
+  private readonly insertSessionStmt: Statement<{
+    id: string;
+    title: string;
+    codexThreadId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  private readonly listSessionsStmt: Statement<[], SessionRecord>;
+  private readonly getSessionStmt: Statement<{ id: string }, SessionRecord>;
+  private readonly updateSessionTitleStmt: Statement<{
+    id: string;
+    title: string;
+    updatedAt: string;
+  }>;
+  private readonly updateSessionThreadStmt: Statement<{
+    id: string;
+    codexThreadId: string;
+    updatedAt: string;
+  }>;
+  private readonly deleteSessionStmt: Statement<{ id: string }>;
+  private readonly insertMessageStmt: Statement<{
+    id: string;
+    sessionId: string;
+    role: string;
+    content: string;
+    createdAt: string;
+  }>;
+  private readonly insertAttachmentStmt: Statement<{
+    id: string;
+    messageId: string;
+    sessionId: string;
+    filename: string;
+    mimeType: string;
+    size: number;
+    relativePath: string;
+    createdAt: string;
+  }>;
+  private readonly insertRunItemStmt: Statement<{
+    id: string;
+    messageId: string;
+    sessionId: string;
+    idx: number;
+    payload: string;
+    createdAt: string;
+  }>;
+  private readonly listAttachmentsForMessageStmt: Statement<{ messageId: string }, AttachmentRecord>;
+  private readonly listRunItemsForMessageStmt: Statement<{ messageId: string }, RunItemRow>;
+  private readonly getAttachmentStmt: Statement<{ id: string }, AttachmentRecord>;
+  private readonly touchSessionStmt: Statement<{ id: string; updatedAt: string }>;
+  private readonly listMessagesStmt: Statement<{ sessionId: string }, MessageRecord>;
 
-const insertSessionStmt = db.prepare<{
-  id: string;
-  title: string;
-  codexThreadId: string | null;
-  createdAt: string;
-  updatedAt: string;
-}>(
-  `
-  INSERT INTO sessions (id, title, codex_thread_id, created_at, updated_at)
-  VALUES (@id, @title, @codexThreadId, @createdAt, @updatedAt)
-`
-);
-
-const listSessionsStmt = db.prepare<[], SessionRecord>(`
-  SELECT id, title, codex_thread_id as codexThreadId, created_at as createdAt, updated_at as updatedAt
-  FROM sessions
-  ORDER BY updated_at DESC
-`);
-
-const getSessionStmt = db.prepare<{ id: string }, SessionRecord>(`
-  SELECT id, title, codex_thread_id as codexThreadId, created_at as createdAt, updated_at as updatedAt
-  FROM sessions
-  WHERE id = @id
-`);
-
-const updateSessionTitleStmt = db.prepare<{
-  id: string;
-  title: string;
-  updatedAt: string;
-}>(`
-  UPDATE sessions
-  SET title = @title,
-      updated_at = @updatedAt
-  WHERE id = @id
-`);
-
-const updateSessionThreadStmt = db.prepare<{
-  id: string;
-  codexThreadId: string;
-  updatedAt: string;
-}>(`
-  UPDATE sessions
-  SET codex_thread_id = @codexThreadId,
-      updated_at = @updatedAt
-  WHERE id = @id
-`);
-
-const deleteSessionStmt = db.prepare<{
-  id: string;
-}>(`
-  DELETE FROM sessions WHERE id = @id
-`);
-
-const insertMessageStmt = db.prepare<{
-  id: string;
-  sessionId: string;
-  role: string;
-  content: string;
-  createdAt: string;
-}>(`
-  INSERT INTO messages (id, session_id, role, content, created_at)
-  VALUES (@id, @sessionId, @role, @content, @createdAt)
-`);
-
-const insertAttachmentStmt = db.prepare<{
-  id: string;
-  messageId: string;
-  sessionId: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-  relativePath: string;
-  createdAt: string;
-}>(`
-  INSERT INTO message_attachments (
-    id,
-    message_id,
-    session_id,
-    filename,
-    mime_type,
-    size,
-    relative_path,
-    created_at
-  )
-  VALUES (
-    @id,
-    @messageId,
-    @sessionId,
-    @filename,
-    @mimeType,
-    @size,
-    @relativePath,
-    @createdAt
-  )
-`);
-
-const insertRunItemStmt = db.prepare<{
-  id: string;
-  messageId: string;
-  sessionId: string;
-  idx: number;
-  payload: string;
-  createdAt: string;
-}>(`
-  INSERT INTO message_run_items (
-    id,
-    message_id,
-    session_id,
-    idx,
-    payload,
-    created_at
-  )
-  VALUES (
-    @id,
-    @messageId,
-    @sessionId,
-    @idx,
-    @payload,
-    @createdAt
-  )
-`);
-
-const listAttachmentsForMessageStmt = db.prepare<{
-  messageId: string;
-}, AttachmentRecord>(`
-  SELECT
-    id,
-    message_id as messageId,
-    session_id as sessionId,
-    filename,
-    mime_type as mimeType,
-    size,
-    relative_path as relativePath,
-    created_at as createdAt
-  FROM message_attachments
-  WHERE message_id = @messageId
-  ORDER BY created_at ASC
-`);
-
-const listRunItemsForMessageStmt = db.prepare<{
-  messageId: string;
-}, RunItemRow>(`
-  SELECT
-    id,
-    message_id as messageId,
-    session_id as sessionId,
-    idx,
-    payload,
-    created_at as createdAt
-  FROM message_run_items
-  WHERE message_id = @messageId
-  ORDER BY idx ASC
-`);
-
-const getAttachmentStmt = db.prepare<{
-  id: string;
-}, AttachmentRecord>(`
-  SELECT
-    id,
-    message_id as messageId,
-    session_id as sessionId,
-    filename,
-    mime_type as mimeType,
-    size,
-    relative_path as relativePath,
-    created_at as createdAt
-  FROM message_attachments
-  WHERE id = @id
-`);
-
-const touchSessionStmt = db.prepare<{
-  id: string;
-  updatedAt: string;
-}>(`
-  UPDATE sessions
-  SET updated_at = @updatedAt
-  WHERE id = @id
-`);
-
-const listMessagesStmt = db.prepare<{ sessionId: string }, MessageRecord>(`
-  SELECT id, session_id as sessionId, role, content, created_at as createdAt
-  FROM messages
-  WHERE session_id = @sessionId
-  ORDER BY created_at ASC
-`);
-
-export function createSession(title: string): SessionRecord {
-  const now = new Date().toISOString();
-  const record: SessionRecord = {
-    id: uuid(),
-    title,
-    codexThreadId: null,
-    createdAt: now,
-    updatedAt: now
-  };
-
-  insertSessionStmt.run({
-    id: record.id,
-    title: record.title,
-    codexThreadId: record.codexThreadId,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt
-  });
-
-  ensureWorkspaceDirectory(record.id);
-
-  return record;
-}
-
-export function listSessions(): SessionRecord[] {
-  return listSessionsStmt.all() as SessionRecord[];
-}
-
-export function getSession(id: string): SessionRecord | null {
-  return getSessionStmt.get({ id }) ?? null;
-}
-
-export function updateSessionTitle(id: string, title: string): SessionRecord | null {
-  const existing = getSession(id);
-  if (!existing) {
-    return null;
+  constructor(private readonly workspace: IWorkspace) {
+    this.db = new Database(databasePath);
+    this.configure();
+    this.runMigrations();
+    this.insertSessionStmt = this.db.prepare(`
+      INSERT INTO sessions (id, title, codex_thread_id, created_at, updated_at)
+      VALUES (@id, @title, @codexThreadId, @createdAt, @updatedAt)
+    `);
+    this.listSessionsStmt = this.db.prepare(`
+      SELECT id, title, codex_thread_id as codexThreadId, created_at as createdAt, updated_at as updatedAt
+      FROM sessions
+      ORDER BY updated_at DESC
+    `);
+    this.getSessionStmt = this.db.prepare(`
+      SELECT id, title, codex_thread_id as codexThreadId, created_at as createdAt, updated_at as updatedAt
+      FROM sessions
+      WHERE id = @id
+    `);
+    this.updateSessionTitleStmt = this.db.prepare(`
+      UPDATE sessions
+      SET title = @title,
+          updated_at = @updatedAt
+      WHERE id = @id
+    `);
+    this.updateSessionThreadStmt = this.db.prepare(`
+      UPDATE sessions
+      SET codex_thread_id = @codexThreadId,
+          updated_at = @updatedAt
+      WHERE id = @id
+    `);
+    this.deleteSessionStmt = this.db.prepare(`
+      DELETE FROM sessions WHERE id = @id
+    `);
+    this.insertMessageStmt = this.db.prepare(`
+      INSERT INTO messages (id, session_id, role, content, created_at)
+      VALUES (@id, @sessionId, @role, @content, @createdAt)
+    `);
+    this.insertAttachmentStmt = this.db.prepare(`
+      INSERT INTO message_attachments (
+        id,
+        message_id,
+        session_id,
+        filename,
+        mime_type,
+        size,
+        relative_path,
+        created_at
+      )
+      VALUES (
+        @id,
+        @messageId,
+        @sessionId,
+        @filename,
+        @mimeType,
+        @size,
+        @relativePath,
+        @createdAt
+      )
+    `);
+    this.insertRunItemStmt = this.db.prepare(`
+      INSERT INTO message_run_items (
+        id,
+        message_id,
+        session_id,
+        idx,
+        payload,
+        created_at
+      )
+      VALUES (
+        @id,
+        @messageId,
+        @sessionId,
+        @idx,
+        @payload,
+        @createdAt
+      )
+    `);
+    this.listAttachmentsForMessageStmt = this.db.prepare(`
+      SELECT
+        id,
+        message_id as messageId,
+        session_id as sessionId,
+        filename,
+        mime_type as mimeType,
+        size,
+        relative_path as relativePath,
+        created_at as createdAt
+      FROM message_attachments
+      WHERE message_id = @messageId
+      ORDER BY created_at ASC
+    `);
+    this.listRunItemsForMessageStmt = this.db.prepare(`
+      SELECT
+        id,
+        message_id as messageId,
+        session_id as sessionId,
+        idx,
+        payload,
+        created_at as createdAt
+      FROM message_run_items
+      WHERE message_id = @messageId
+      ORDER BY idx ASC
+    `);
+    this.getAttachmentStmt = this.db.prepare(`
+      SELECT
+        id,
+        message_id as messageId,
+        session_id as sessionId,
+        filename,
+        mime_type as mimeType,
+        size,
+        relative_path as relativePath,
+        created_at as createdAt
+      FROM message_attachments
+      WHERE id = @id
+    `);
+    this.touchSessionStmt = this.db.prepare(`
+      UPDATE sessions
+      SET updated_at = @updatedAt
+      WHERE id = @id
+    `);
+    this.listMessagesStmt = this.db.prepare(`
+      SELECT id, session_id as sessionId, role, content, created_at as createdAt
+      FROM messages
+      WHERE session_id = @sessionId
+      ORDER BY created_at ASC
+    `);
   }
 
-  const updatedAt = new Date().toISOString();
-  updateSessionTitleStmt.run({ id, title, updatedAt });
-  return { ...existing, title, updatedAt };
-}
-
-export function updateSessionThreadId(
-  id: string,
-  codexThreadId: string
-): SessionRecord | null {
-  const existing = getSession(id);
-  if (!existing) {
-    return null;
+  getDatabasePath(): string {
+    return databasePath;
   }
 
-  const updatedAt = new Date().toISOString();
-  updateSessionThreadStmt.run({ id, codexThreadId, updatedAt });
-  return { ...existing, codexThreadId, updatedAt };
-}
-
-export function deleteSession(id: string): boolean {
-  const result = deleteSessionStmt.run({ id });
-  const deleted = result.changes > 0;
-  if (deleted) {
-    removeWorkspaceDirectory(id);
-  }
-  return deleted;
-}
-
-export function addMessage(
-  sessionId: string,
-  role: MessageRecord['role'],
-  content: string,
-  attachments: NewAttachmentInput[] = [],
-  items: ThreadItem[] = []
-): MessageWithAttachments {
-  const createdAt = new Date().toISOString();
-  const message: MessageRecord = {
-    id: uuid(),
-    sessionId,
-    role,
-    content,
-    createdAt
-  };
-
-  insertMessageStmt.run({
-    id: message.id,
-    sessionId: message.sessionId,
-    role: message.role,
-    content: message.content,
-    createdAt: message.createdAt
-  });
-
-  const savedAttachments: AttachmentRecord[] = [];
-  const savedItems: ThreadItem[] = [];
-
-  for (const attachment of attachments) {
-    const record: AttachmentRecord = {
+  createSession(title: string): SessionRecord {
+    const now = new Date().toISOString();
+    const record: SessionRecord = {
       id: uuid(),
-      messageId: message.id,
+      title,
+      codexThreadId: null,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    this.insertSessionStmt.run({
+      id: record.id,
+      title: record.title,
+      codexThreadId: record.codexThreadId,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt
+    });
+
+    this.workspace.ensureWorkspaceDirectory(record.id);
+
+    return record;
+  }
+
+  listSessions(): SessionRecord[] {
+    return this.listSessionsStmt.all() as SessionRecord[];
+  }
+
+  getSession(id: string): SessionRecord | null {
+    return this.getSessionStmt.get({ id }) ?? null;
+  }
+
+  updateSessionTitle(id: string, title: string): SessionRecord | null {
+    const existing = this.getSession(id);
+    if (!existing) {
+      return null;
+    }
+
+    const updatedAt = new Date().toISOString();
+    this.updateSessionTitleStmt.run({ id, title, updatedAt });
+    return { ...existing, title, updatedAt };
+  }
+
+  updateSessionThreadId(id: string, codexThreadId: string): SessionRecord | null {
+    const existing = this.getSession(id);
+    if (!existing) {
+      return null;
+    }
+
+    const updatedAt = new Date().toISOString();
+    this.updateSessionThreadStmt.run({ id, codexThreadId, updatedAt });
+    return { ...existing, codexThreadId, updatedAt };
+  }
+
+  deleteSession(id: string): boolean {
+    const result = this.deleteSessionStmt.run({ id });
+    const deleted = result.changes > 0;
+    if (deleted) {
+      this.workspace.removeWorkspaceDirectory(id);
+    }
+    return deleted;
+  }
+
+  addMessage(
+    sessionId: string,
+    role: MessageRecord['role'],
+    content: string,
+    attachments: NewAttachmentInput[] = [],
+    items: ThreadItem[] = []
+  ): MessageWithAttachments {
+    const createdAt = new Date().toISOString();
+    const message: MessageRecord = {
+      id: uuid(),
       sessionId,
-      filename: attachment.filename,
-      mimeType: attachment.mimeType,
-      size: attachment.size,
-      relativePath: attachment.relativePath,
+      role,
+      content,
       createdAt
     };
 
-    insertAttachmentStmt.run({
-      id: record.id,
-      messageId: record.messageId,
-      sessionId: record.sessionId,
-      filename: record.filename,
-      mimeType: record.mimeType,
-      size: record.size,
-      relativePath: record.relativePath,
-      createdAt: record.createdAt
+    this.insertMessageStmt.run({
+      id: message.id,
+      sessionId: message.sessionId,
+      role: message.role,
+      content: message.content,
+      createdAt: message.createdAt
     });
 
-    savedAttachments.push(record);
+    const savedAttachments: AttachmentRecord[] = [];
+    const savedItems: ThreadItem[] = [];
+
+    for (const attachment of attachments) {
+      const record: AttachmentRecord = {
+        id: uuid(),
+        messageId: message.id,
+        sessionId,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        relativePath: attachment.relativePath,
+        createdAt
+      };
+
+      this.insertAttachmentStmt.run({
+        id: record.id,
+        messageId: record.messageId,
+        sessionId: record.sessionId,
+        filename: record.filename,
+        mimeType: record.mimeType,
+        size: record.size,
+        relativePath: record.relativePath,
+        createdAt: record.createdAt
+      });
+
+      savedAttachments.push(record);
+    }
+
+    items.forEach((item, index) => {
+      const id = uuid();
+      const payload = JSON.stringify(item);
+      this.insertRunItemStmt.run({
+        id,
+        messageId: message.id,
+        sessionId,
+        idx: index,
+        payload,
+        createdAt
+      });
+      try {
+        savedItems.push(JSON.parse(payload) as ThreadItem);
+      } catch {
+        savedItems.push(item);
+      }
+    });
+
+    this.touchSessionStmt.run({ id: sessionId, updatedAt: message.createdAt });
+
+    return { ...message, attachments: savedAttachments, items: savedItems };
   }
 
-  items.forEach((item, index) => {
-    const id = uuid();
-    const payload = JSON.stringify(item);
-    insertRunItemStmt.run({
-      id,
-      messageId: message.id,
-      sessionId,
-      idx: index,
-      payload,
-      createdAt
-    });
+  listMessages(sessionId: string): MessageWithAttachments[] {
+    const baseMessages = this.listMessagesStmt.all({ sessionId }) as MessageRecord[];
+    return baseMessages.map((message) => ({
+      ...message,
+      attachments: this.listAttachmentsForMessageStmt.all({ messageId: message.id }) ?? [],
+      items:
+        this.listRunItemsForMessageStmt
+          .all({ messageId: message.id })
+          .map((row) => this.deserializeRunItem(row.payload)) ?? []
+    }));
+  }
+
+  getAttachment(id: string): AttachmentRecord | null {
+    return this.getAttachmentStmt.get({ id }) ?? null;
+  }
+
+  private configure(): void {
+    this.db.pragma('foreign_keys = ON');
+    this.db.pragma('journal_mode = WAL');
+  }
+
+  private runMigrations(): void {
+    this.db.transaction(() => {
+      for (const migration of migrations) {
+        this.db.prepare(migration).run();
+      }
+    })();
+  }
+
+  private deserializeRunItem(payload: string): ThreadItem {
     try {
-      savedItems.push(JSON.parse(payload) as ThreadItem);
+      return JSON.parse(payload) as ThreadItem;
     } catch {
-      // Fallback to original item if JSON parse fails unexpectedly.
-      savedItems.push(item);
+      return { type: 'unknown', value: payload } as ThreadItem;
     }
-  });
-
-  touchSessionStmt.run({ id: sessionId, updatedAt: message.createdAt });
-
-  return { ...message, attachments: savedAttachments, items: savedItems };
+  }
 }
 
-export function listMessages(sessionId: string): MessageWithAttachments[] {
-  const baseMessages = listMessagesStmt.all({ sessionId }) as MessageRecord[];
-  return baseMessages.map((message) => ({
-    ...message,
-    attachments: listAttachmentsForMessageStmt.all({ messageId: message.id }) ?? [],
-    items:
-      listRunItemsForMessageStmt
-        .all({ messageId: message.id })
-        .map((row) => {
-          try {
-            return JSON.parse(row.payload) as ThreadItem;
-          } catch {
-            return { type: 'unknown', value: row.payload } as ThreadItem;
-          }
-        }) ?? []
-  }));
-}
+export const database: IDatabase = new SQLiteDatabase(workspaceManager);
 
-export function getDatabasePath(): string {
-  return databasePath;
-}
-
-export function getAttachment(id: string): AttachmentRecord | null {
-  return getAttachmentStmt.get({ id }) ?? null;
-}
+export default database;

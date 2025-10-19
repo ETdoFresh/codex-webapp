@@ -1,10 +1,12 @@
-import type { Codex, RunResult, Thread, ThreadItem, Usage } from '@openai/codex-sdk';
+import type { Codex, Thread } from '@openai/codex-sdk';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { SessionRecord } from './db';
+import type { RunTurnResult, RunTurnStreamedResult, CodexThreadEvent } from './types/codex';
+import type { SessionRecord } from './types/database';
 import { ensureWorkspaceDirectory } from './workspaces';
 import { getCodexMeta } from './settings';
+import type IAgent from './interfaces/IAgent';
 
 type ThreadCacheEntry = {
   thread: Thread;
@@ -30,17 +32,7 @@ const sandboxMode =
     | 'danger-full-access'
     | undefined) ?? 'workspace-write';
 
-export type CodexThreadEvent =
-  | { type: 'thread.started'; thread_id: string }
-  | { type: 'turn.started' }
-  | { type: 'turn.completed'; usage: Usage }
-  | { type: 'turn.failed'; error: { message: string } | null }
-  | { type: 'error'; message: string }
-  | { type: 'item.started'; item: ThreadItem }
-  | { type: 'item.updated'; item: ThreadItem }
-  | { type: 'item.completed'; item: ThreadItem };
-
-class CodexManager {
+class CodexManager implements IAgent {
   private codexInstance: Codex | null = null;
   private readonly threads: Map<string, ThreadCacheEntry>;
 
@@ -109,7 +101,7 @@ class CodexManager {
   async runTurn(
     session: SessionRecord,
     input: string
-  ): Promise<{ result: RunResult; threadId: string | null }> {
+  ): Promise<RunTurnResult> {
     const thread = await this.ensureThread(session);
     const result = await thread.run(input);
     return { result, threadId: thread.id };
@@ -118,7 +110,7 @@ class CodexManager {
   async runTurnStreamed(
     session: SessionRecord,
     input: string
-  ): Promise<{ events: AsyncGenerator<CodexThreadEvent>; thread: Thread }> {
+  ): Promise<RunTurnStreamedResult> {
     const thread = await this.ensureThread(session);
     const streamed = await (thread as unknown as {
       runStreamed: (input: string) => Promise<{ events: AsyncGenerator<CodexThreadEvent> }>;
@@ -135,7 +127,7 @@ class CodexManager {
   }
 }
 
-export const codexManager = new CodexManager();
+export const codexManager: IAgent = new CodexManager();
 
 async function loadCodexClass(): Promise<typeof Codex | null> {
   if (CodexClass !== undefined) {

@@ -3,25 +3,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ThreadItem, Usage } from '@openai/codex-sdk';
-import {
-  addMessage,
-  createSession,
-  deleteSession,
-  getDatabasePath,
-  getAttachment,
-  getSession,
-  listMessages,
-  listSessions,
-  updateSessionThreadId,
-  updateSessionTitle,
-  type MessageWithAttachments,
-  type SessionRecord
-} from './db';
+import database from './db';
 import { codexManager } from './codexManager';
-import type { CodexThreadEvent } from './codexManager';
+import type { CodexThreadEvent } from './types/codex';
 import { getCodexMeta, updateCodexMeta } from './settings';
 import { z } from 'zod';
 import { ensureWorkspaceDirectory, getWorkspaceDirectory, getWorkspaceRoot } from './workspaces';
+import {
+  attachmentToResponse,
+  messageToResponse,
+  toSessionResponse,
+  type IncomingAttachment,
+  type MessageResponse
+} from './types/api';
+import type { NewAttachmentInput } from './types/database';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -70,17 +65,10 @@ const determineExtension = (filename: string, mimeType: string): string => {
   return mimeExtensionMap[mimeType] ?? '';
 };
 
-type IncomingAttachment = {
-  filename: string;
-  mimeType: string;
-  size: number;
-  base64: string;
-};
-
 const saveAttachmentsToWorkspace = (
   sessionId: string,
   attachments: IncomingAttachment[]
-) => {
+): NewAttachmentInput[] => {
   if (attachments.length === 0) {
     return [];
   }
@@ -131,64 +119,12 @@ const asyncHandler =
     handler(req, res, next).catch(next);
   };
 
-type SessionResponse = {
-  id: string;
-  title: string;
-  codexThreadId: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type AttachmentResponse = {
-  id: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-  url: string;
-  createdAt: string;
-};
-
-type MessageResponse = {
-  id: string;
-  role: MessageWithAttachments['role'];
-  content: string;
-  createdAt: string;
-  attachments: AttachmentResponse[];
-  items: ThreadItem[];
-};
-
-const toSessionResponse = (session: SessionRecord): SessionResponse => ({
-  id: session.id,
-  title: session.title,
-  codexThreadId: session.codexThreadId,
-  createdAt: session.createdAt,
-  updatedAt: session.updatedAt
-});
-
-const attachmentToResponse = (attachment: MessageWithAttachments['attachments'][number]): AttachmentResponse => ({
-  id: attachment.id,
-  filename: attachment.filename,
-  mimeType: attachment.mimeType,
-  size: attachment.size,
-  url: `/api/sessions/${attachment.sessionId}/attachments/${attachment.id}`,
-  createdAt: attachment.createdAt
-});
-
-const messageToResponse = (message: MessageWithAttachments): MessageResponse => ({
-  id: message.id,
-  role: message.role,
-  content: message.content,
-  createdAt: message.createdAt,
-  attachments: message.attachments.map(attachmentToResponse),
-  items: message.items ?? []
-});
-
 app.get('/health', async (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     service: serviceName,
     timestamp: new Date().toISOString(),
-    databasePath: path.relative(process.cwd(), getDatabasePath())
+    databasePath: path.relative(process.cwd(), database.getDatabasePath())
   });
 });
 
@@ -240,7 +176,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
 app.get(
   '/api/sessions',
   asyncHandler(async (_req, res) => {
-    const sessions = listSessions().map(toSessionResponse);
+    const sessions = database.listSessions().map(toSessionResponse);
     res.json({ sessions });
   })
 );
@@ -262,7 +198,7 @@ app.post(
     const body = schema.parse(req.body);
     const title = body?.title ?? DEFAULT_SESSION_TITLE;
 
-    const session = createSession(title);
+    const session = database.createSession(title);
     res.status(201).json({ session: toSessionResponse(session) });
   })
 );
@@ -270,7 +206,7 @@ app.post(
 app.get(
   '/api/sessions/:id',
   asyncHandler(async (req, res) => {
-    const session = getSession(req.params.id);
+    const session = database.getSession(req.params.id);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
@@ -292,7 +228,7 @@ app.patch(
         .optional()
     });
 
-    const session = getSession(req.params.id);
+    const session = database.getSession(req.params.id);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
@@ -304,7 +240,7 @@ app.patch(
       return;
     }
 
-    const updated = updateSessionTitle(session.id, body.title);
+    const updated = database.updateSessionTitle(session.id, body.title);
     if (!updated) {
       res.status(500).json({ error: 'Unable to update session' });
       return;
@@ -317,13 +253,13 @@ app.patch(
 app.delete(
   '/api/sessions/:id',
   asyncHandler(async (req, res) => {
-    const session = getSession(req.params.id);
+    const session = database.getSession(req.params.id);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
     }
 
-    const deleted = deleteSession(session.id);
+    const deleted = database.deleteSession(session.id);
     if (deleted) {
       codexManager.forgetSession(session.id);
     }
@@ -335,13 +271,13 @@ app.delete(
 app.get(
   '/api/sessions/:id/messages',
   asyncHandler(async (req, res) => {
-    const session = getSession(req.params.id);
+    const session = database.getSession(req.params.id);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
     }
 
-    const messages = listMessages(session.id).map(messageToResponse);
+    const messages = database.listMessages(session.id).map(messageToResponse);
     res.json({ messages });
   })
 );
@@ -367,7 +303,7 @@ app.post(
       attachments: z.array(attachmentSchema).optional()
     });
 
-    const session = getSession(req.params.id);
+    const session = database.getSession(req.params.id);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
@@ -420,12 +356,12 @@ app.post(
 
     const storedContent =
       content.length > 0 ? content : attachmentsPayload.length > 0 ? '(Image attachment)' : '';
-    const userMessage = addMessage(session.id, 'user', storedContent, savedAttachmentInputs);
+    const userMessage = database.addMessage(session.id, 'user', storedContent, savedAttachmentInputs);
 
     if (session.title === DEFAULT_SESSION_TITLE && storedContent.length > 0) {
       const inferredTitle =
         storedContent.length > 60 ? `${storedContent.slice(0, 60).trim()}…` : storedContent;
-      const updated = updateSessionTitle(session.id, inferredTitle);
+      const updated = database.updateSessionTitle(session.id, inferredTitle);
       if (updated) {
         session.title = updated.title;
         session.updatedAt = updated.updatedAt;
@@ -584,7 +520,7 @@ app.post(
 
         if (event.type === 'thread.started') {
           if (event.thread_id && session.codexThreadId !== event.thread_id) {
-            const updated = updateSessionThreadId(session.id, event.thread_id);
+            const updated = database.updateSessionThreadId(session.id, event.thread_id);
             if (updated) {
               session.codexThreadId = updated.codexThreadId;
               session.updatedAt = updated.updatedAt;
@@ -638,8 +574,8 @@ app.post(
       return;
     }
 
-    const assistantMessage = addMessage(session.id, 'assistant', assistantText, [], completedItems);
-    const latestSession = getSession(session.id) ?? session;
+    const assistantMessage = database.addMessage(session.id, 'assistant', assistantText, [], completedItems);
+    const latestSession = database.getSession(session.id) ?? session;
 
     writeEvent({
       type: 'assistant_message_final',
@@ -661,13 +597,13 @@ app.get(
   '/api/sessions/:sessionId/attachments/:attachmentId',
   asyncHandler(async (req, res) => {
     const { sessionId, attachmentId } = req.params;
-    const session = getSession(sessionId);
+    const session = database.getSession(sessionId);
     if (!session) {
       res.status(404).json({ error: 'Session not found' });
       return;
     }
 
-    const attachment = getAttachment(attachmentId);
+    const attachment = database.getAttachment(attachmentId);
     if (!attachment || attachment.sessionId !== sessionId) {
       res.status(404).json({ error: 'Attachment not found' });
       return;
