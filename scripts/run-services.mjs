@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Orchestrates the local development environment by validating Node.js version,
+ * then sequentially starting the frontend, backend, and reverse-proxy npm scripts,
+ * waiting for each service to become ready before launching the next, and managing
+ * graceful shutdown of all spawned processes on termination signals or unexpected exits.
+ */
+
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
