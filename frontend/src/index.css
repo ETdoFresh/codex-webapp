@@ -835,6 +835,11 @@ textarea {
   border-radius: 0.35rem;
 }
 
+.message-empty {
+  font-style: italic;
+  opacity: 0.7;
+}
+
 [data-theme='dark'] .message-content pre {
   background: rgba(148, 163, 184, 0.18);
 }

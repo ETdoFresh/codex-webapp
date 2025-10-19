@@ -473,12 +473,17 @@ app.post(
     };
 
     let clientAborted = false;
+    let responseFinished = false;
     req.on('aborted', () => {
       clientAborted = true;
       appendDebugLog({ type: 'client_aborted' });
     });
-    req.on('close', () => {
-      if (!res.writableEnded) {
+    res.on('finish', () => {
+      responseFinished = true;
+      appendDebugLog({ type: 'response_finished' });
+    });
+    res.on('close', () => {
+      if (!responseFinished && !clientAborted) {
         clientAborted = true;
         appendDebugLog({ type: 'client_closed_before_finish' });
       } else {

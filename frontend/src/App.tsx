@@ -674,6 +674,40 @@ function App() {
         </div>
       ) : null;
 
+    const messageItems = message.items ?? [];
+    const primaryContent =
+      typeof message.content === 'string' ? message.content : '';
+    const trimmedPrimaryContent = primaryContent.trim();
+    const fallbackContent = (() => {
+      for (const item of messageItems) {
+        if (!item || typeof item !== 'object') {
+          continue;
+        }
+        const { type } = item as { type?: unknown };
+        if (type === 'agent_message' || type === 'message') {
+          const candidate = (item as { text?: unknown }).text;
+          if (typeof candidate === 'string' && candidate.trim().length > 0) {
+            return candidate;
+          }
+        }
+      }
+      return '';
+    })();
+    const displayContent =
+      trimmedPrimaryContent.length > 0 ? primaryContent : fallbackContent;
+    const trimmedContent = displayContent.trim();
+    const hasContent = trimmedContent.length > 0;
+    const placeholderText =
+      message.role === 'assistant'
+        ? sendingMessage && message.id.startsWith('temp-')
+          ? 'Codex is thinking…'
+          : messageItems.length > 0
+          ? 'Codex responded with structured output.'
+          : 'No response yet.'
+      : message.role === 'user'
+      ? 'Empty message.'
+      : 'System notice.';
+
     return (
       <article key={message.id} className={`message message-${message.role}`}>
         <header className="message-meta">
@@ -689,13 +723,17 @@ function App() {
           </span>
         </header>
         {reasoningBlock}
-        <ReactMarkdown
-          className="message-content"
-          remarkPlugins={markdownPlugins}
-          components={blockMarkdownComponents}
-        >
-          {message.content}
-        </ReactMarkdown>
+        {hasContent ? (
+          <ReactMarkdown
+            className="message-content"
+            remarkPlugins={markdownPlugins}
+            components={blockMarkdownComponents}
+          >
+            {displayContent}
+          </ReactMarkdown>
+        ) : (
+          <p className="message-content message-empty">{placeholderText}</p>
+        )}
         {attachments.length > 0 ? (
           <div className="message-attachments">
             {attachments.map((attachment) => (
@@ -873,6 +911,8 @@ function App() {
     try {
       const stream = streamPostMessage(targetSessionId, payload);
       let streamCompleted = false;
+      let sawAssistantFinal = false;
+      let userMessageCreatedAt: string | null = null;
 
       for await (const streamEvent of stream) {
         const viewingTargetSession = activeSessionIdRef.current === targetSessionId;
@@ -883,6 +923,8 @@ function App() {
             attachments: streamEvent.message.attachments ?? [],
             items: streamEvent.message.items ?? []
           };
+
+          userMessageCreatedAt = normalizedMessage.createdAt;
 
           if (viewingTargetSession) {
             setMessages((previous) => [...previous, normalizedMessage]);
@@ -960,6 +1002,8 @@ function App() {
             attachments: streamEvent.message.attachments ?? [],
             items: streamEvent.message.items ?? []
           };
+
+          sawAssistantFinal = true;
 
           if (viewingTargetSession) {
             setMessages((previous) => {
@@ -1060,6 +1104,50 @@ function App() {
         if (streamCompleted) {
           break;
         }
+      }
+
+      if (!sawAssistantFinal) {
+        const pollForAssistant = async (remainingAttempts: number): Promise<void> => {
+          try {
+            const latestMessages = await fetchMessages(targetSessionId);
+            const latestAssistantMessage = [...latestMessages]
+              .reverse()
+              .find((message) => message.role === 'assistant');
+
+            const hasFinalAssistant =
+              latestAssistantMessage &&
+              latestAssistantMessage.content.trim().length > 0 &&
+              (!userMessageCreatedAt ||
+                new Date(latestAssistantMessage.createdAt).getTime() >=
+                  new Date(userMessageCreatedAt).getTime());
+
+            if (activeSessionIdRef.current === targetSessionId) {
+              setMessages(latestMessages);
+            }
+
+            if (hasFinalAssistant) {
+              try {
+                const latestSessions = await fetchSessions();
+                setSessions(sortSessions(latestSessions));
+              } catch (sessionSyncError) {
+                console.error('Failed to synchronize sessions after interrupted stream', sessionSyncError);
+              }
+              return;
+            }
+          } catch (syncError) {
+            console.error('Failed to synchronize messages after interrupted stream', syncError);
+          }
+
+          if (remainingAttempts > 0) {
+            setTimeout(() => {
+              void pollForAssistant(remainingAttempts - 1);
+            }, 1000);
+          } else {
+            console.warn('Stream ended without assistant_message_final; unable to synchronize responses.');
+          }
+        };
+
+        void pollForAssistant(15);
       }
     } catch (error) {
       if (error instanceof ApiError) {
