@@ -8,6 +8,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
@@ -127,9 +128,35 @@ const resolveCodexPath = () => {
   }
 
   if (result.status === 0) {
-    const inferredPath = result.stdout.trim().split(/\r?\n/)[0];
-    if (inferredPath) {
-      return inferredPath;
+    const candidates = result.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line !== '');
+
+    const normalizeWindowsPath = (rawPath) => {
+      if (process.platform !== 'win32' || rawPath === '') {
+        return rawPath;
+      }
+
+      const hasExtension = /\.[^.\\/:]+$/.test(rawPath);
+      const candidates = hasExtension
+        ? [rawPath]
+        : [`${rawPath}.cmd`, `${rawPath}.exe`, `${rawPath}.bat`, rawPath];
+
+      for (const candidate of candidates) {
+        if (existsSync(candidate)) {
+          return candidate;
+        }
+      }
+
+      return rawPath;
+    };
+
+    for (const candidate of candidates) {
+      const normalized = normalizeWindowsPath(candidate);
+      if (existsSync(normalized)) {
+        return normalized;
+      }
     }
   }
 
