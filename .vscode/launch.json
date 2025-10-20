@@ -1,0 +1,98 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Frontend: Dev Server (inspect 9228)",
+      "type": "pwa-node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9228 --enable-source-maps"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "outputCapture": "std",
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/frontend/**/*.js",
+        "${workspaceFolder}/frontend/**/*.ts",
+        "${workspaceFolder}/frontend/**/*.tsx"
+      ]
+    },
+    {
+      "name": "Backend: Dev Server (inspect 9229)",
+      "type": "pwa-node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9229 --enable-source-maps",
+        "PORT": "4000"
+      },
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "preLaunchTask": "wait-for-frontend",
+      "outFiles": [
+        "${workspaceFolder}/backend/dist/**/*.js",
+        "${workspaceFolder}/backend/src/**/*.ts"
+      ],
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/backend/**/*.js",
+        "${workspaceFolder}/backend/**/*.ts"
+      ]
+    },
+    {
+      "name": "Proxy: Dev Server (inspect 9230)",
+      "type": "pwa-node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/reverse-proxy",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9230 --enable-source-maps",
+        "FRONTEND_URL": "http://localhost:5173",
+        "BACKEND_URL": "http://localhost:4000",
+        "PORT": "3000"
+      },
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "preLaunchTask": "wait-for-backend",
+      "outFiles": [
+        "${workspaceFolder}/reverse-proxy/dist/**/*.js",
+        "${workspaceFolder}/reverse-proxy/src/**/*.ts"
+      ],
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/reverse-proxy/**/*.js",
+        "${workspaceFolder}/reverse-proxy/**/*.ts"
+      ]
+    },
+    {
+      "name": "Frontend UI (Chrome via proxy)",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "preLaunchTask": "wait-for-proxy",
+      "runtimeArgs": ["--remote-debugging-port=9222"],
+      "presentation": {
+        "reveal": "never"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Codex Workspace (Debug All)",
+      "configurations": [
+        "Frontend: Dev Server (inspect 9228)",
+        "Backend: Dev Server (inspect 9229)",
+        "Proxy: Dev Server (inspect 9230)"
+      ],
+      "stopAll": true
+    }
+  ]
+}

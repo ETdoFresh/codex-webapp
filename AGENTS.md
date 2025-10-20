@@ -16,8 +16,11 @@ Keep this checklist handy when working in the repo—especially if you are an AI
    npm run install   # first time only, installs frontend/backend/proxy deps
    npm run dev       # launches all three services with hot reload
    ```
-3. The orchestrator (`scripts/run-services.mjs`) starts the frontend, waits for its dev server, then starts the backend, waits for `/health`, and finally launches the proxy. It also attempts to auto-detect the `codex` CLI (`which codex`) and exports `CODEX_PATH` for the backend.
-4. Stop the stack with `Ctrl+C` in that terminal.
+3. The installer script (`scripts/install-deps.mjs`) executes each `npm install` sequentially and, if it detects `--inspect*` in `NODE_OPTIONS`, relaunches itself without those flags so Windows inspector ports (9228/9229) no longer block dependency setup.
+4. The orchestrator (`scripts/run-services.mjs`) starts the frontend, waits for its dev server, then starts the backend, waits for `/health`, and finally launches the proxy. It also attempts to auto-detect the `codex` CLI (`which codex` on macOS/Linux, `where codex` on Windows) and exports `CODEX_PATH` for the backend. If it notices Node was launched with `--inspect*`, it transparently re-runs itself without those flags so Windows dev shells keep working even when the inspector port is taken.
+5. Stop the stack with `Ctrl+C` in that terminal.
+
+Need to nuke native modules (e.g., after moving between WSL and Windows)? Run `npm run uninstall` to wipe each service’s `node_modules`, then follow with `npm run install`.
 
 ### Hot reload expectations
 

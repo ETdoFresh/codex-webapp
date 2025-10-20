@@ -12,6 +12,81 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
+const INSPECT_RERUN_FLAG = 'CODEX_RUN_SERVICES_RERUN';
+
+const sanitizeNodeOptions = (value) => {
+  if (!value || value.trim() === '') {
+    return undefined;
+  }
+
+  const tokens = value.split(/\s+/).filter(Boolean);
+  const filtered = tokens.filter((token) => !token.startsWith('--inspect'));
+
+  if (filtered.length === 0) {
+    return undefined;
+  }
+
+  return filtered.join(' ');
+};
+
+const applySanitizedNodeOptions = () => {
+  const sanitized = sanitizeNodeOptions(process.env.NODE_OPTIONS);
+  if (sanitized === undefined) {
+    delete process.env.NODE_OPTIONS;
+  } else {
+    process.env.NODE_OPTIONS = sanitized;
+  }
+  delete process.env[INSPECT_RERUN_FLAG];
+};
+
+const maybeRerunWithoutInspector = async () => {
+  const hasInspector = process.execArgv.some((arg) => arg.startsWith('--inspect'));
+
+  if (hasInspector && !process.env[INSPECT_RERUN_FLAG]) {
+    console.warn(
+      '[orchestrator] detected --inspect flag; restarting without inspector to avoid port conflicts'
+    );
+
+    const scriptPath = fileURLToPath(import.meta.url);
+    const env = { ...process.env };
+    const sanitized = sanitizeNodeOptions(env.NODE_OPTIONS);
+    if (sanitized === undefined) {
+      delete env.NODE_OPTIONS;
+    } else {
+      env.NODE_OPTIONS = sanitized;
+    }
+    env[INSPECT_RERUN_FLAG] = '1';
+
+    const exitCode = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [scriptPath, ...process.argv.slice(2)], {
+        stdio: 'inherit',
+        env
+      });
+
+      child.on('exit', (code, signal) => {
+        if (signal) {
+          reject(new Error(`re-run terminated by signal ${signal}`));
+          return;
+        }
+        resolve(typeof code === 'number' ? code : 0);
+      });
+
+      child.on('error', (error) => {
+        reject(new Error(`failed to re-run orchestrator without inspector: ${error.message}`));
+      });
+    }).catch((error) => {
+      console.error(error instanceof Error ? error.message : error);
+      return 1;
+    });
+
+    process.exit(exitCode);
+  }
+
+  applySanitizedNodeOptions();
+};
+
+await maybeRerunWithoutInspector();
+
 const MINIMUM_NODE_VERSION = 18;
 const [nodeMajor] = process.versions.node
   .split('.')
@@ -30,7 +105,8 @@ if (!['dev', 'start'].includes(mode)) {
   process.exit(1);
 }
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmCommand = 'npm';
+const useShell = process.platform === 'win32';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(dirname, '..');
@@ -44,9 +120,14 @@ const resolveCodexPath = () => {
     return process.env.CODEX_PATH;
   }
 
-  const result = spawnSync('which', ['codex'], { encoding: 'utf8' });
+  const locatorCommand = process.platform === 'win32' ? 'where' : 'which';
+  const result = spawnSync(locatorCommand, ['codex'], { encoding: 'utf8' });
+  if (result.error) {
+    return null;
+  }
+
   if (result.status === 0) {
-    const inferredPath = result.stdout.trim();
+    const inferredPath = result.stdout.trim().split(/\r?\n/)[0];
     if (inferredPath) {
       return inferredPath;
     }
@@ -143,7 +224,8 @@ const spawnService = (service) => {
       env: {
         ...process.env,
         ...service.env
-      }
+      },
+      shell: useShell
     }
   );
 

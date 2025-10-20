@@ -1,0 +1,38 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "wait-for-frontend",
+      "type": "shell",
+      "command": "npx --yes wait-on http://127.0.0.1:5173 --timeout 60000",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "never",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "wait-for-backend",
+      "type": "shell",
+      "command": "npx --yes wait-on http://127.0.0.1:4000/health --timeout 60000",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "never",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "wait-for-proxy",
+      "type": "shell",
+      "command": "npx --yes wait-on http://127.0.0.1:3000/health --timeout 60000",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "never",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
+}
