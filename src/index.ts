@@ -1,11 +1,11 @@
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { spawnSync } from 'node:child_process';
 import express, { type Application, type Request, type Response, type NextFunction } from 'express';
 import { createServer as createViteServer, type ViteDevServer } from 'vite';
-import registerBackend from './backend/index.js';
 
 const DEFAULT_PORT = 3000;
 const MAX_PORT_SEARCH = 20;
@@ -16,6 +16,7 @@ const frontendRoot = path.resolve(dirname, 'frontend');
 const clientDistPath = path.resolve(repoRoot, 'dist/client');
 const indexHtmlPath = path.resolve(frontendRoot, 'index.html');
 const isProduction = process.env.NODE_ENV === 'production';
+const codexVendorRoot = path.resolve(repoRoot, 'node_modules/@openai/codex-sdk/vendor');
 
 type StartResult = {
   server: Server;
@@ -42,6 +43,42 @@ const sanitizeNodeOptions = () => {
   process.env.NODE_OPTIONS = filtered.join(' ');
 };
 
+const normalizeCodexBinaryPath = (candidate: string | null | undefined): string | null => {
+  if (!candidate) {
+    return null;
+  }
+
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const attempts: string[] = [];
+  if (process.platform === 'win32') {
+    const ext = path.extname(trimmed).toLowerCase();
+    const windowsExtensions = ['.exe', '.cmd', '.bat', '.ps1'];
+    if (!windowsExtensions.includes(ext)) {
+      for (const suffix of windowsExtensions) {
+        attempts.push(`${trimmed}${suffix}`);
+      }
+    }
+  }
+  attempts.push(trimmed);
+
+  for (const testPath of attempts) {
+    try {
+      const stats = fsSync.statSync(testPath);
+      if (stats.isFile()) {
+        return testPath;
+      }
+    } catch {
+      // ignore and keep trying
+    }
+  }
+
+  return null;
+};
+
 const resolveCodexPath = (): string | null => {
   if (process.env.CODEX_PATH && process.env.CODEX_PATH.trim() !== '') {
     return process.env.CODEX_PATH;
@@ -58,18 +95,97 @@ const resolveCodexPath = (): string | null => {
     .map((line) => line.trim())
     .find((line) => line.length > 0);
 
-  return firstLine ?? null;
+  return normalizeCodexBinaryPath(firstLine);
+};
+
+const bundledCodexCandidates = (): string[] => {
+  const binaryName = process.platform === 'win32' ? 'codex.exe' : 'codex';
+  const preferred = (() => {
+    if (process.platform === 'win32') {
+      if (process.arch === 'x64') {
+        return 'x86_64-pc-windows-msvc';
+      }
+      if (process.arch === 'arm64') {
+        return 'aarch64-pc-windows-msvc';
+      }
+    }
+    if (process.platform === 'darwin') {
+      if (process.arch === 'x64') {
+        return 'x86_64-apple-darwin';
+      }
+      if (process.arch === 'arm64') {
+        return 'aarch64-apple-darwin';
+      }
+    }
+    if (process.platform === 'linux') {
+      if (process.arch === 'x64') {
+        return 'x86_64-unknown-linux-gnu';
+      }
+      if (process.arch === 'arm64') {
+        return 'aarch64-unknown-linux-gnu';
+      }
+    }
+    return null;
+  })();
+
+  const candidates: string[] = [];
+  const pushCandidate = (relative: string) => {
+    candidates.push(path.join(codexVendorRoot, relative, 'codex', binaryName));
+  };
+
+  if (preferred) {
+    pushCandidate(preferred);
+  }
+
+  try {
+    const entries = fsSync.readdirSync(codexVendorRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const name = entry.name;
+      if (preferred && name === preferred) {
+        continue;
+      }
+      pushCandidate(name);
+    }
+  } catch {
+    // ignore, fall through with any candidates already collected
+  }
+
+  return candidates;
+};
+
+const findBundledCodexPath = (): string | null => {
+  for (const candidate of bundledCodexCandidates()) {
+    if (fsSync.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
 };
 
 const ensureCodexPath = () => {
-  const resolved = resolveCodexPath();
-  if (resolved && !process.env.CODEX_PATH) {
-    process.env.CODEX_PATH = resolved;
+  const normalizedCurrent = normalizeCodexBinaryPath(process.env.CODEX_PATH);
+  if (normalizedCurrent) {
+    process.env.CODEX_PATH = normalizedCurrent;
+    console.log(`[codex-webapp] using CODEX_PATH=${normalizedCurrent}`);
+    return;
   }
-};
 
-const attachBackend = (app: Application) => {
-  registerBackend(app);
+  const originalCurrent = process.env.CODEX_PATH?.trim();
+  if (originalCurrent) {
+    console.warn(
+      `[codex-webapp] CODEX_PATH=${originalCurrent} is invalid, clearing and retrying resolution.`
+    );
+    delete process.env.CODEX_PATH;
+  }
+
+  const resolved = findBundledCodexPath() ?? resolveCodexPath();
+  if (resolved) {
+    process.env.CODEX_PATH = resolved;
+    console.log(`[codex-webapp] using CODEX_PATH=${resolved}`);
+  }
 };
 
 const registerFrontendMiddleware = async (app: Application): Promise<ViteDevServer | undefined> => {
@@ -155,7 +271,8 @@ const start = async () => {
   const app = express();
   app.disable('x-powered-by');
 
-  attachBackend(app);
+  const { default: registerBackend } = await import('./backend/index.js');
+  registerBackend(app);
   const vite = await registerFrontendMiddleware(app);
 
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
