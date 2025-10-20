@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type IWorkspace from './interfaces/IWorkspace';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(dirname, '..');
+const projectRoot = path.resolve(dirname, '../..');
 
 const defaultWorkspaceRoot = path.join(projectRoot, 'workspaces');
 const workspaceRoot =

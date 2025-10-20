@@ -10,5 +10,7 @@ proxy/dist
 backend/dist
 backend/workspaces/
 backend/var/
+var/
+workspaces/
 *.tsbuildinfo
 worktrees/

@@ -25,7 +25,7 @@ type RunItemRow = {
 };
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(dirname, '..');
+const projectRoot = path.resolve(dirname, '../..');
 const defaultDataDir = path.join(projectRoot, 'var');
 const dataDir = process.env.BACKEND_DATA_DIR
   ? path.resolve(process.env.BACKEND_DATA_DIR)
