@@ -113,14 +113,14 @@ const summarizeReasoningItem = (
 };
 
 const ITEM_EMOJIS: Record<string, string> = {
-  reasoning: '🧠',
-  agent_message: '💬',
-  file_change: '📝',
-  command_execution: '🛠️',
-  mcp_tool_call: '🤖',
-  web_search: '🔍',
-  todo_list: '🗒️',
-  error: '⚠️'
+  reasoning: '\u{1f9e0}',
+  agent_message: '\u{1f4ac}',
+  file_change: '\u{1f4dd}',
+  command_execution: '\u{1f6e0}\u{fe0f}',
+  mcp_tool_call: '\u{1f916}',
+  web_search: '\u{1f50d}',
+  todo_list: '\u{1f5d2}\u{fe0f}',
+  error: '\u{26a0}\u{fe0f}'
 };
 
 
@@ -133,8 +133,11 @@ const formatTitleCase = (value: string): string =>
 
 const getItemEmoji = (type: string): string => {
   const normalizedType = type.toLowerCase();
-  return ITEM_EMOJIS[normalizedType] ?? '📌';
+  return ITEM_EMOJIS[normalizedType] ?? '\u{1f4cc}';
 };
+
+const stripAnsiSequences = (value: string): string =>
+  typeof value === 'string' ? value.replace(/\u001B\[[\d;]*m/g, '') : value;
 
 const formatStatusLabel = (value: unknown): string | null => {
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -191,9 +194,22 @@ function App() {
   const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
   const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
   const [chatViewMode, setChatViewMode] = useState<'formatted' | 'detailed' | 'raw'>('formatted');
+  const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(new Set());
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+
+  const toggleItemExpansion = useCallback((entryKey: string) => {
+    setExpandedItemKeys((previous) => {
+      const next = new Set(previous);
+      if (next.has(entryKey)) {
+        next.delete(entryKey);
+      } else {
+        next.add(entryKey);
+      }
+      return next;
+    });
+  }, []);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -297,6 +313,39 @@ function App() {
   useEffect(() => {
     setComposerAttachments([]);
   }, [activeSessionId]);
+
+  useEffect(() => {
+    const validKeys = new Set<string>();
+    for (const message of messages) {
+      const items = message.items ?? [];
+      items.forEach((item, index) => {
+        if (!item || typeof item !== 'object') {
+          return;
+        }
+        const record = item as { type?: unknown; id?: unknown };
+        if (record.type === 'file_change') {
+          const candidateId =
+            typeof record.id === 'string' && record.id.length > 0
+              ? record.id
+              : `${message.id}-item-${index}`;
+          validKeys.add(candidateId);
+        }
+      });
+    }
+
+    setExpandedItemKeys((previous) => {
+      let changed = false;
+      const next = new Set<string>();
+      previous.forEach((key) => {
+        if (validKeys.has(key)) {
+          next.add(key);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : previous;
+    });
+  }, [messages]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -514,6 +563,8 @@ function App() {
       key: string;
       emoji: string;
       content: JSX.Element;
+      expandable?: boolean;
+      details?: JSX.Element | null;
     };
 
     const buildFlatItemEntry = (rawItem: TurnItem, index: number): FlatItemEntry | null => {
@@ -586,6 +637,89 @@ function App() {
             : 'Updated';
         const suffix = changes.length > 1 ? ` (+${changes.length - 1} more)` : '';
 
+        const detailEntries = changes
+          .map((change, changeIndex) => {
+            if (!change || typeof change !== 'object') {
+              return null;
+            }
+            const changeRecord = change as Record<string, unknown>;
+            const detailPath =
+              typeof changeRecord.path === 'string' && changeRecord.path.length > 0
+                ? changeRecord.path
+                : pathValue;
+            const detailKindSource =
+              typeof changeRecord.kind === 'string' && changeRecord.kind.length > 0
+                ? changeRecord.kind
+                : kindValue;
+            const detailKind = formatTitleCase(String(detailKindSource));
+            const diffText = (() => {
+              const diff = changeRecord.diff;
+              if (typeof diff === 'string' && diff.trim().length > 0) {
+                return stripAnsiSequences(diff.trim());
+              }
+              const patch = changeRecord.patch;
+              if (typeof patch === 'string' && patch.trim().length > 0) {
+                return stripAnsiSequences(patch.trim());
+              }
+              const summary = changeRecord.summary;
+              if (typeof summary === 'string' && summary.trim().length > 0) {
+                return stripAnsiSequences(summary.trim());
+              }
+              return null;
+            })();
+
+            const diffBlock =
+              diffText !== null
+                ? (() => {
+                    const lines = diffText
+                      .split(/\r?\n/)
+                      .filter((line, idx, arr) => !(idx === arr.length - 1 && line.trim().length === 0));
+                    if (lines.length === 0) {
+                      return null;
+                    }
+                    return (
+                      <pre className="message-item-pre message-item-pre-diff">
+                        {lines.map((line, lineIndex) => {
+                          const normalizedLine = stripAnsiSequences(line);
+                          const lineClass =
+                            normalizedLine.startsWith('+')
+                              ? 'message-item-diff-line message-item-diff-line-add'
+                              : normalizedLine.startsWith('-')
+                              ? 'message-item-diff-line message-item-diff-line-remove'
+                              : normalizedLine.startsWith('@')
+                              ? 'message-item-diff-line message-item-diff-line-hunk'
+                              : 'message-item-diff-line';
+                          return (
+                            <span
+                              key={`${key}-detail-${changeIndex}-line-${lineIndex}`}
+                              className={lineClass}
+                            >
+                              {normalizedLine.length > 0 ? normalizedLine : '\u00a0'}
+                            </span>
+                          );
+                        })}
+                      </pre>
+                    );
+                  })()
+                : null;
+
+            return (
+              <div key={`${key}-detail-${changeIndex}`} className="message-item-file-detail">
+                <div className="message-item-file-meta">
+                  <span className="message-item-change-kind">{detailKind}</span>
+                  <code className="message-item-inline-code">{detailPath}</code>
+                </div>
+                {diffBlock}
+              </div>
+            );
+          })
+          .filter((value): value is JSX.Element => value !== null);
+
+        const details =
+          detailEntries.length > 0 ? (
+            <div className="message-item-details-list">{detailEntries}</div>
+          ) : null;
+
         return {
           key,
           emoji,
@@ -595,7 +729,9 @@ function App() {
               <code className="message-item-inline-code">{pathValue}</code>
               {suffix}
             </span>
-          )
+          ),
+          expandable: details !== null,
+          details
         };
       }
 
@@ -638,7 +774,7 @@ function App() {
             : null;
         const label =
           server || tool
-            ? [server, tool ? `tool: ${tool}` : null].filter(Boolean).join(' - ')
+            ? [server, tool ? `tool: ${tool}` : null].filter(Boolean).join(' · ')
             : 'Tool call';
         const statusLabel = resolveStatusLabel();
 
@@ -758,14 +894,46 @@ function App() {
       ? (
           <>
             <div className="message-items">
-              {detailedEntries.map((entry) => (
-                <div key={entry.key} className="message-item-row">
-                  <span className="message-item-icon" aria-hidden="true">
-                    {entry.emoji}
-                  </span>
-                  <div className="message-item-content">{entry.content}</div>
-                </div>
-              ))}
+              {detailedEntries.map((entry) => {
+                const expandable = Boolean(entry.expandable && entry.details);
+                const isExpanded = expandedItemKeys.has(entry.key);
+
+                return (
+                  <div
+                    key={entry.key}
+                    className={`message-item-row${expandable ? ' message-item-row-expandable' : ''}`}
+                  >
+                    {expandable ? (
+                      <>
+                        <button
+                          type="button"
+                          className="message-item-toggle"
+                          onClick={() => toggleItemExpansion(entry.key)}
+                          aria-expanded={isExpanded}
+                        >
+                          <span className="message-item-expand-icon" aria-hidden="true">
+                            {isExpanded ? '▾' : '▸'}
+                          </span>
+                          <span className="message-item-icon" aria-hidden="true">
+                            {entry.emoji}
+                          </span>
+                          <span className="message-item-content">{entry.content}</span>
+                        </button>
+                        {isExpanded && entry.details ? (
+                          <div className="message-item-details-block">{entry.details}</div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div className="message-item-static">
+                        <span className="message-item-icon" aria-hidden="true">
+                          {entry.emoji}
+                        </span>
+                        <span className="message-item-content">{entry.content}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             {hasContent ? (
               <div className="message-items-separator" aria-hidden="true" />

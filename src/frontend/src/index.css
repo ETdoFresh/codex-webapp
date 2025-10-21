@@ -718,10 +718,50 @@ textarea {
 
 .message-item-row {
   display: flex;
-  gap: 0.4rem;
-  align-items: flex-start;
-  padding: 0.15rem 0;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.2rem 0;
   color: var(--color-text-muted);
+}
+
+.message-item-row-expandable {
+  gap: 0.45rem;
+}
+
+.message-item-static {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.message-item-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.message-item-toggle:focus-visible {
+  outline: 1px solid var(--color-text-muted);
+  border-radius: 0.5rem;
+}
+
+.message-item-row-expandable .message-item-toggle:hover {
+  color: var(--color-text-primary);
+}
+
+.message-item-expand-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 0.25rem;
 }
 
 .message-item-icon {
@@ -778,6 +818,32 @@ textarea {
   border-radius: 0.6rem;
   padding: 0.15rem 0.45rem;
   line-height: 1.4;
+}
+
+.message-item-pre-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.message-item-diff-line {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-item-diff-line-add {
+  color: var(--color-success-text);
+}
+
+.message-item-diff-line-remove {
+  color: var(--color-error-text);
+}
+
+.message-item-diff-line-hunk {
+  color: var(--color-text-muted);
+  font-weight: 600;
 }
 
 .message-item-details {
@@ -1487,4 +1553,35 @@ textarea {
   .message-list {
     padding: 1rem;
   }
+}
+.message-item-details-block {
+  padding-left: 2.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.message-item-details-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.message-item-file-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.message-item-file-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+
+.message-item-change-kind {
+  font-weight: 600;
+  color: var(--color-text-primary);
 }
