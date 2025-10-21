@@ -112,6 +112,50 @@ const summarizeReasoningItem = (
   return { text, additional, lines };
 };
 
+const ITEM_EMOJIS: Record<string, string> = {
+  reasoning: '🧠',
+  agent_message: '💬',
+  file_change: '📝',
+  command_execution: '🛠️',
+  mcp_tool_call: '🤖',
+  web_search: '🔍',
+  todo_list: '🗒️',
+  error: '⚠️'
+};
+
+
+const formatTitleCase = (value: string): string =>
+  value
+    .split(/[\s_-]+/)
+    .filter((segment) => segment.length > 0)
+    .map((segment) => segment[0]?.toUpperCase() + segment.slice(1))
+    .join(' ');
+
+const getItemEmoji = (type: string): string => {
+  const normalizedType = type.toLowerCase();
+  return ITEM_EMOJIS[normalizedType] ?? '📌';
+};
+
+const formatStatusLabel = (value: unknown): string | null => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return null;
+  }
+  return formatTitleCase(value.trim());
+};
+
+const coerceNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
 const sessionDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   day: 'numeric',
@@ -147,9 +191,6 @@ function App() {
   const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
   const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
   const [chatViewMode, setChatViewMode] = useState<'formatted' | 'detailed' | 'raw'>('formatted');
-  const [reasoningExpandedByMessageId, setReasoningExpandedByMessageId] =
-    useState<Record<string, Record<string, boolean>>>({});
-  const [defaultReasoningExpanded, setDefaultReasoningExpanded] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
@@ -177,17 +218,6 @@ function App() {
         <a {...props} target="_blank" rel="noreferrer" />
       )
     }),
-    []
-  );
-
-  const resolveReasoningEntryKey = useCallback(
-    (messageId: string, item: TurnItem, index: number) => {
-      const record = item as Record<string, unknown>;
-      const itemIdValue = record.id;
-      return typeof itemIdValue === 'string' && itemIdValue.length > 0
-        ? itemIdValue
-        : `${messageId}-item-${index}`;
-    },
     []
   );
 
@@ -271,75 +301,6 @@ function App() {
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
-
-  useEffect(() => {
-    setReasoningExpandedByMessageId({});
-    setDefaultReasoningExpanded(false);
-  }, [activeSessionId]);
-
-  useEffect(() => {
-    if (messages.length === 0) {
-      setReasoningExpandedByMessageId((previous) =>
-        Object.keys(previous).length > 0 ? {} : previous
-      );
-      return;
-    }
-
-    setReasoningExpandedByMessageId((previous) => {
-      let changed = false;
-      const nextState: Record<string, Record<string, boolean>> = { ...previous };
-      const validMessageIds = new Set<string>();
-
-      for (const message of messages) {
-        if (message.role !== 'assistant' || !message.items?.length) {
-          continue;
-        }
-
-        const reasoningItems = message.items.filter(
-          (item) => typeof item.type === 'string' && item.type === 'reasoning'
-        );
-
-        if (reasoningItems.length === 0) {
-          continue;
-        }
-
-        validMessageIds.add(message.id);
-
-        const existingForMessage = nextState[message.id] ?? {};
-        let messageState = existingForMessage;
-        let messageStateChanged = false;
-
-        reasoningItems.forEach((item, index) => {
-          const key = resolveReasoningEntryKey(message.id, item, index);
-          if (messageState[key] === undefined) {
-            if (!messageStateChanged) {
-              messageState =
-                messageState === existingForMessage ? { ...existingForMessage } : messageState;
-              messageStateChanged = true;
-            }
-            messageState[key] = defaultReasoningExpanded;
-          }
-        });
-
-        if (messageStateChanged) {
-          nextState[message.id] = messageState;
-          changed = true;
-        } else if (nextState[message.id] === undefined) {
-          nextState[message.id] = messageState;
-          changed = true;
-        }
-      }
-
-      for (const messageId of Object.keys(nextState)) {
-        if (!validMessageIds.has(messageId)) {
-          delete nextState[messageId];
-          changed = true;
-        }
-      }
-
-      return changed ? nextState : previous;
-    });
-  }, [messages, defaultReasoningExpanded, resolveReasoningEntryKey]);
 
   useEffect(() => {
     if (!imagePreview) {
@@ -545,136 +506,232 @@ function App() {
       });
   };
 
-  const handleToggleReasoning = (messageId: string, entryKey: string, nextState?: boolean) => {
-    setReasoningExpandedByMessageId((previous) => {
-      const previousForMessage = previous[messageId];
-      const current =
-        (previousForMessage ? previousForMessage[entryKey] : undefined) ?? defaultReasoningExpanded;
-      const desired = typeof nextState === 'boolean' ? nextState : !current;
-      if (current === desired) {
-        return previous;
-      }
-
-      const nextForMessage = previousForMessage
-        ? { ...previousForMessage, [entryKey]: desired }
-        : { [entryKey]: desired };
-      const nextStateMap = { ...previous, [messageId]: nextForMessage };
-
-      setDefaultReasoningExpanded(desired);
-      return nextStateMap;
-    });
-  };
-
   const renderMessage = (message: Message, detailed: boolean) => {
     const attachments = message.attachments ?? [];
-    const allItems = message.items ?? [];
-    const reasoningEntries =
-      detailed && message.role === 'assistant'
-        ? allItems.filter(
-            (item) => typeof item.type === 'string' && item.type === 'reasoning'
-          )
-        : [];
-    const hasReasoning = reasoningEntries.length > 0;
-    const messageReasoningState = reasoningExpandedByMessageId[message.id] ?? {};
-    let anyReasoningExpanded = false;
-
-    const reasoningContent = hasReasoning
-      ? reasoningEntries.map((item, index) => {
-          const entryKey = resolveReasoningEntryKey(message.id, item, index);
-          const { additional, lines } = summarizeReasoningItem(item);
-          const remainingText =
-            lines.length > 1 ? lines.slice(1).join('\n') : '';
-          const hasRemainingText = remainingText.length > 0;
-          const hasAdditional = Boolean(additional && additional.length > 0);
-          const hasCollapsibleContent = hasRemainingText || hasAdditional;
-          const entryState = messageReasoningState[entryKey] ?? defaultReasoningExpanded;
-          const isEntryExpanded = hasCollapsibleContent ? entryState : false;
-          const firstLine =
-            lines[0] ??
-            (additional
-              ? 'Additional reasoning details available.'
-              : 'Reasoning details unavailable.');
-          const labelText = `#${index + 1}`;
-
-          if (isEntryExpanded) {
-            anyReasoningExpanded = true;
-          }
-
-          return (
-            <div
-              key={entryKey}
-              className={`message-reasoning-entry${
-                hasCollapsibleContent ? ' has-toggle' : ''
-              }`}
-            >
-              <button
-                type="button"
-                className={`message-reasoning-summary${
-                  hasCollapsibleContent ? '' : ' static'
-                }`}
-                onClick={
-                  hasCollapsibleContent
-                    ? () => handleToggleReasoning(message.id, entryKey)
-                    : undefined
-                }
-                aria-expanded={
-                  hasCollapsibleContent ? isEntryExpanded : undefined
-                }
-                aria-label={
-                  hasCollapsibleContent
-                    ? `Toggle reasoning details for step ${index + 1}`
-                    : undefined
-                }
-              >
-                <ReactMarkdown
-                  className="message-reasoning-text"
-                  remarkPlugins={markdownPlugins}
-                  components={inlineMarkdownComponents}
-                >
-                  {firstLine}
-                </ReactMarkdown>
-                <span className="message-reasoning-meta">
-                  <span className="message-reasoning-label">
-                    {labelText}
-                  </span>
-                  {hasCollapsibleContent ? (
-                    <span className="message-reasoning-icon" aria-hidden="true">
-                      {isEntryExpanded ? '▴' : '▾'}
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-              {isEntryExpanded ? (
-                <div className="message-reasoning-details">
-                  {hasRemainingText ? (
-                    <ReactMarkdown
-                      className="message-reasoning-detail-text"
-                      remarkPlugins={markdownPlugins}
-                      components={blockMarkdownComponents}
-                    >
-                      {remainingText}
-                    </ReactMarkdown>
-                  ) : null}
-                  {hasAdditional && additional ? (
-                    <pre className="message-reasoning-detail-text message-reasoning-detail-json">
-                      {additional}
-                    </pre>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          );
-        })
-      : null;
-
-    const reasoningBlock =
-      hasReasoning && detailed && reasoningContent ? (
-        <div className={`message-reasoning${anyReasoningExpanded ? ' expanded' : ''}`}>
-          {reasoningContent}
-        </div>
-      ) : null;
-
     const messageItems = message.items ?? [];
+
+    type FlatItemEntry = {
+      key: string;
+      emoji: string;
+      content: JSX.Element;
+    };
+
+    const buildFlatItemEntry = (rawItem: TurnItem, index: number): FlatItemEntry | null => {
+      if (!rawItem || typeof rawItem !== 'object') {
+        return null;
+      }
+
+      const record = rawItem as Record<string, unknown>;
+      const typeValue =
+        typeof record.type === 'string' && record.type.length > 0 ? record.type : 'item';
+
+      if (typeValue === 'agent_message') {
+        return null;
+      }
+
+      const key =
+        typeof record.id === 'string' && record.id.length > 0
+          ? record.id
+          : `${message.id}-item-${index}`;
+      const emoji = getItemEmoji(typeValue);
+
+      if (typeValue === 'reasoning') {
+        const summary = summarizeReasoningItem(rawItem);
+        const textValue = summary.text ?? summary.lines.join(' ') ?? 'Reasoning step.';
+
+        return {
+          key,
+          emoji,
+          content: (
+            <ReactMarkdown
+              className="message-item-reasoning"
+              remarkPlugins={markdownPlugins}
+              components={blockMarkdownComponents}
+            >
+              {textValue}
+            </ReactMarkdown>
+          )
+        };
+      }
+
+      const resolveStatusLabel = (): string | null => {
+        const baseStatus = formatStatusLabel(record.status);
+        if (typeValue === 'command_execution') {
+          const exitCode = coerceNumber(record.exit_code);
+          if (exitCode !== null) {
+            return baseStatus ? `${baseStatus} · exit ${exitCode}` : `Exit ${exitCode}`;
+          }
+        }
+        return baseStatus;
+      };
+
+      if (typeValue === 'file_change') {
+        const changes = Array.isArray(record.changes) ? record.changes : [];
+        if (changes.length === 0) {
+          return {
+            key,
+            emoji,
+            content: <span>File changes recorded.</span>
+          };
+        }
+
+        const firstChange = (changes[0] as Record<string, unknown>) ?? {};
+        const pathValue =
+          typeof firstChange.path === 'string' && firstChange.path.length > 0
+            ? firstChange.path
+            : 'Unknown path';
+        const kindValue =
+          typeof firstChange.kind === 'string' && firstChange.kind.length > 0
+            ? formatTitleCase(firstChange.kind)
+            : 'Updated';
+        const suffix = changes.length > 1 ? ` (+${changes.length - 1} more)` : '';
+
+        return {
+          key,
+          emoji,
+          content: (
+            <span>
+              {kindValue}{' '}
+              <code className="message-item-inline-code">{pathValue}</code>
+              {suffix}
+            </span>
+          )
+        };
+      }
+
+      if (typeValue === 'command_execution') {
+        const commandText =
+          typeof record.command === 'string' && record.command.trim().length > 0
+            ? record.command
+            : 'Command unavailable.';
+        const statusLabel = resolveStatusLabel();
+        const aggregatedOutput =
+          typeof record.aggregated_output === 'string'
+            ? record.aggregated_output.trim()
+            : '';
+        const truncatedOutput =
+          aggregatedOutput.length > 160
+            ? `${aggregatedOutput.slice(0, 160)}…`
+            : aggregatedOutput;
+
+        return {
+          key,
+          emoji,
+          content: (
+            <span>
+              <code className="message-item-inline-code">{commandText}</code>
+              {statusLabel ? ` · ${statusLabel}` : ''}
+              {truncatedOutput.length > 0 ? ` · ${truncatedOutput}` : ''}
+            </span>
+          )
+        };
+      }
+
+      if (typeValue === 'mcp_tool_call') {
+        const server =
+          typeof record.server === 'string' && record.server.length > 0
+            ? record.server
+            : null;
+        const tool =
+          typeof record.tool === 'string' && record.tool.length > 0
+            ? record.tool
+            : null;
+        const label =
+          server || tool
+            ? [server, tool ? `tool: ${tool}` : null].filter(Boolean).join(' - ')
+            : 'Tool call';
+        const statusLabel = resolveStatusLabel();
+
+        return {
+          key,
+          emoji,
+          content: (
+            <span>
+              {label}
+              {statusLabel ? ` · ${statusLabel}` : ''}
+            </span>
+          )
+        };
+      }
+
+      if (typeValue === 'web_search') {
+        const query =
+          typeof record.query === 'string' && record.query.trim().length > 0
+            ? record.query.trim()
+            : 'Unknown query';
+        return {
+          key,
+          emoji,
+          content: (
+            <span>
+              Search for <span className="message-item-highlight">{query}</span>
+            </span>
+          )
+        };
+      }
+
+      if (typeValue === 'todo_list') {
+        const items = Array.isArray(record.items) ? record.items : [];
+        if (items.length === 0) {
+          return {
+            key,
+            emoji,
+            content: <span>To-do list updated.</span>
+          };
+        }
+
+        const summaries = items
+          .map((entry, todoIndex) => {
+            if (!entry || typeof entry !== 'object') {
+              return null;
+            }
+            const todoRecord = entry as Record<string, unknown>;
+            const textValue =
+              typeof todoRecord.text === 'string' && todoRecord.text.length > 0
+                ? todoRecord.text
+                : `Item ${todoIndex + 1}`;
+            const checkbox = Boolean(todoRecord.completed) ? '[x]' : '[ ]';
+            return `${checkbox} ${textValue}`;
+          })
+          .filter((value): value is string => value !== null);
+        const preview = summaries.slice(0, 2).join('; ');
+        const suffix = summaries.length > 2 ? ` (+${summaries.length - 2} more)` : '';
+
+        return {
+          key,
+          emoji,
+          content: <span>{`${preview}${suffix}`}</span>
+        };
+      }
+
+      if (typeValue === 'error') {
+        const messageText =
+          typeof record.message === 'string' && record.message.trim().length > 0
+            ? record.message.trim()
+            : 'Error reported.';
+        return {
+          key,
+          emoji,
+          content: <span className="message-item-error">{messageText}</span>
+        };
+      }
+
+      const fallbackText = JSON.stringify(record);
+      return {
+        key,
+        emoji,
+        content: <span>{fallbackText}</span>
+      };
+    };
+
+    const detailedEntries =
+      detailed && messageItems.length > 0
+        ? messageItems
+            .map((item, index) => buildFlatItemEntry(item as TurnItem, index))
+            .filter((entry): entry is FlatItemEntry => entry !== null)
+        : [];
+    const hasDetailedItems = detailedEntries.length > 0;
+
     const primaryContent =
       typeof message.content === 'string' ? message.content : '';
     const trimmedPrimaryContent = primaryContent.trim();
@@ -697,6 +754,25 @@ function App() {
       trimmedPrimaryContent.length > 0 ? primaryContent : fallbackContent;
     const trimmedContent = displayContent.trim();
     const hasContent = trimmedContent.length > 0;
+    const detailedItemsBlock = hasDetailedItems
+      ? (
+          <>
+            <div className="message-items">
+              {detailedEntries.map((entry) => (
+                <div key={entry.key} className="message-item-row">
+                  <span className="message-item-icon" aria-hidden="true">
+                    {entry.emoji}
+                  </span>
+                  <div className="message-item-content">{entry.content}</div>
+                </div>
+              ))}
+            </div>
+            {hasContent ? (
+              <div className="message-items-separator" aria-hidden="true" />
+            ) : null}
+          </>
+        )
+      : null;
     const placeholderText =
       message.role === 'assistant'
         ? sendingMessage && message.id.startsWith('temp-')
@@ -722,7 +798,7 @@ function App() {
             {messageTimeFormatter.format(new Date(message.createdAt))}
           </span>
         </header>
-        {reasoningBlock}
+        {detailedItemsBlock}
         {hasContent ? (
           <ReactMarkdown
             className="message-content"
@@ -1020,21 +1096,6 @@ function App() {
             });
           }
 
-          setReasoningExpandedByMessageId((previous) => {
-            if (streamEvent.temporaryId === normalizedMessage.id) {
-              return previous;
-            }
-
-            const next = { ...previous };
-            if (previous[streamEvent.temporaryId] !== undefined) {
-              next[normalizedMessage.id] = previous[streamEvent.temporaryId];
-            }
-            if (streamEvent.temporaryId in next) {
-              delete next[streamEvent.temporaryId];
-            }
-            return next;
-          });
-
           setSessions((previous) => {
             let found = false;
             const updated = previous.map((session) => {
@@ -1066,17 +1127,6 @@ function App() {
             setMessages((previous) =>
               previous.filter((message) => message.id !== tempId)
             );
-          }
-
-          if (tempId) {
-            setReasoningExpandedByMessageId((previous) => {
-              if (!(tempId in previous)) {
-                return previous;
-              }
-              const next = { ...previous };
-              delete next[tempId];
-              return next;
-            });
           }
 
           if (viewingTargetSession) {

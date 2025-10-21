@@ -709,6 +709,150 @@ textarea {
   background: rgba(148, 163, 184, 0.16);
 }
 
+.message-items {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.message-item-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  padding: 0.15rem 0;
+  color: var(--color-text-muted);
+}
+
+.message-item-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 1.2rem;
+}
+
+.message-item-content {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  color: inherit;
+}
+
+.message-item-line {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  word-break: break-word;
+}
+
+.message-item-reasoning {
+  margin: 0;
+  font-size: 0.92rem;
+  color: inherit;
+}
+
+.message-item-reasoning p {
+  margin: 0;
+}
+
+.message-items-separator {
+  height: 1px;
+  width: 100%;
+  background: var(--color-placeholder-border);
+  margin: 0.5rem 0 0.75rem;
+  opacity: 0.65;
+}
+
+.message-item-inline-code {
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85rem;
+  background: var(--color-neutral-bg);
+  border: 1px solid var(--color-neutral-border);
+  border-radius: 0.6rem;
+  padding: 0.15rem 0.45rem;
+  line-height: 1.4;
+}
+
+.message-item-details {
+  margin: 0.2rem 0 0;
+}
+
+.message-item-details summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  list-style: none;
+}
+
+.message-item-details summary::before {
+  content: '▸';
+  font-size: 0.75rem;
+  transform: translateY(1px);
+  transition: transform 0.2s ease;
+  color: inherit;
+}
+
+.message-item-details[open] summary::before {
+  content: '▾';
+}
+
+.message-item-details summary:hover,
+.message-item-details summary:focus-visible {
+  color: var(--color-text-primary);
+}
+
+.message-item-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.message-item-pre {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--color-neutral-bg);
+  border: 1px solid var(--color-neutral-border);
+  border-radius: 0.6rem;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-item-text {
+  margin: 0.2rem 0 0;
+}
+
+.message-item-highlight {
+  font-weight: 600;
+}
+
+.message-item-muted {
+  color: var(--color-text-muted);
+}
+
+.message-item-error {
+  color: var(--color-error-text);
+  font-weight: 600;
+  margin: 0.2rem 0 0;
+}
+
+.message-item-markdown {
+  margin: 0.25rem 0 0;
+}
+
 .message-placeholder {
   margin: auto;
   text-align: center;
