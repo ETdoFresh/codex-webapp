@@ -6,7 +6,7 @@ interface IDatabase {
   listSessions(): SessionRecord[];
   getSession(id: string): SessionRecord | null;
   updateSessionTitle(id: string, title: string): SessionRecord | null;
-  updateSessionThreadId(id: string, codexThreadId: string): SessionRecord | null;
+  updateSessionThreadId(id: string, codexThreadId: string | null): SessionRecord | null;
   deleteSession(id: string): boolean;
   addMessage(
     sessionId: string,

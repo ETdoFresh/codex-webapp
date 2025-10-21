@@ -25,12 +25,15 @@ const codexOptions = {
   ...(process.env.CODEX_PATH ? { codexPathOverride: process.env.CODEX_PATH } : {})
 } as const;
 
-const sandboxMode =
-  (process.env.CODEX_SANDBOX_MODE as
-    | 'read-only'
-    | 'workspace-write'
-    | 'danger-full-access'
-    | undefined) ?? 'workspace-write';
+const resolvedSandboxEnv = process.env.CODEX_SANDBOX_MODE as
+  | 'read-only'
+  | 'workspace-write'
+  | 'danger-full-access'
+  | undefined;
+
+const sandboxMode: 'read-only' | 'workspace-write' | 'danger-full-access' =
+  resolvedSandboxEnv ??
+  (process.platform === 'win32' ? 'danger-full-access' : 'workspace-write');
 
 class CodexManager implements IAgent {
   private codexInstance: Codex | null = null;

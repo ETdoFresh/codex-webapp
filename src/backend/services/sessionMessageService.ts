@@ -22,6 +22,15 @@ import {
   recordStreamDebugEvent
 } from './streamDebug';
 
+const CODING_AGENT_INSTRUCTIONS = [
+  'You are the Codex WebApp agent operating inside a Windows-based workspace.',
+  'Prefer editing files by emitting file_change items via apply_patch.',
+  'Only run shell commands when absolutely necessary and wrap them exactly as either ["bash","-lc","<command>"] or ["powershell.exe","-NoProfile","-NonInteractive","-Command","<command>"].',
+  'Bare powershell.exe commands are not trusted and will be auto-rejected.',
+  'If a command is rejected, immediately switch to apply_patch or another allowed approach instead of retrying the same command.',
+  'Use workspace-relative paths unless an absolute path is provided.'
+].join('\n');
+
 const attachmentSchema = z.object({
   filename: z.string().trim().min(1).max(200),
   mimeType: z.string().trim().min(1).max(120),
@@ -125,12 +134,14 @@ export async function handleSessionMessageRequest(
     }
   }
 
-  let codexInput =
+  const userRequest =
     payload.content.length > 0
       ? payload.content
       : userMessage.attachments.length > 0
       ? 'The user provided image attachments.'
       : '';
+
+  let codexInput = `${CODING_AGENT_INSTRUCTIONS}\n\nUser request:\n${userRequest}`.trimEnd();
 
   if (userMessage.attachments.length > 0) {
     const attachmentSummary = userMessage.attachments
@@ -347,6 +358,11 @@ export async function handleSessionMessageRequest(
   }
 
   if (streamError) {
+    codexManager.forgetSession(session.id);
+    if (session.codexThreadId) {
+      database.updateSessionThreadId(session.id, null);
+      session.codexThreadId = null;
+    }
     writeEvent({
       type: 'error',
       message: streamError.message,

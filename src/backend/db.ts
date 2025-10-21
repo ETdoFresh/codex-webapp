@@ -122,7 +122,7 @@ class SQLiteDatabase implements IDatabase {
   }>;
   private readonly updateSessionThreadStmt: Statement<{
     id: string;
-    codexThreadId: string;
+    codexThreadId: string | null;
     updatedAt: string;
   }>;
   private readonly deleteSessionStmt: Statement<{ id: string }>;
@@ -332,7 +332,7 @@ class SQLiteDatabase implements IDatabase {
     return { ...existing, title, updatedAt };
   }
 
-  updateSessionThreadId(id: string, codexThreadId: string): SessionRecord | null {
+  updateSessionThreadId(id: string, codexThreadId: string | null): SessionRecord | null {
     const existing = this.getSession(id);
     if (!existing) {
       return null;
