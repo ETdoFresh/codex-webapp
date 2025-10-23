@@ -6,7 +6,7 @@ export type Session = {
   updatedAt: string;
 };
 
-export type MessageRole = 'system' | 'user' | 'assistant';
+export type MessageRole = "system" | "user" | "assistant";
 
 export type Attachment = {
   id: string;
@@ -66,34 +66,34 @@ export type PostMessageErrorResponse = {
 
 export type PostMessageStreamEvent =
   | {
-      type: 'user_message';
+      type: "user_message";
       message: Message;
     }
   | {
-      type: 'assistant_message_snapshot';
+      type: "assistant_message_snapshot";
       message: Message;
     }
   | {
-      type: 'assistant_message_final';
+      type: "assistant_message_final";
       message: Message;
       temporaryId: string;
       session: Session;
       usage: Usage;
     }
   | {
-      type: 'error';
+      type: "error";
       message: string;
       temporaryId?: string;
     }
   | {
-      type: 'done';
+      type: "done";
     };
 
 export type AppMeta = {
   model: string;
-  reasoningEffort: 'low' | 'medium' | 'high';
+  reasoningEffort: "low" | "medium" | "high";
   availableModels: string[];
-  availableReasoningEfforts: Array<'low' | 'medium' | 'high'>;
+  availableReasoningEfforts: Array<"low" | "medium" | "high">;
 };
 
 export type AttachmentUpload = {
@@ -119,4 +119,28 @@ export type ListWorkspaceFilesResponse = {
 
 export type WorkspaceFileContentResponse = {
   file: WorkspaceFileContent;
+};
+
+export type WorkspaceRootInfo = {
+  root: string;
+  defaultRoot: string;
+  isDefault: boolean;
+  exists: boolean;
+};
+
+export type DirectoryEntry = {
+  name: string;
+  path: string;
+};
+
+export type BrowseWorkspaceResponse = {
+  targetPath: string;
+  exists: boolean;
+  isDirectory: boolean;
+  parentPath: string | null;
+  canCreate: boolean;
+  entries: DirectoryEntry[];
+  entriesTruncated: boolean;
+  quickAccess: string[];
+  error: string | null;
 };

@@ -7,61 +7,74 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState
-} from 'react';
-import StatusChip from './components/StatusChip';
-import FileEditorPanel from './components/FileEditorPanel';
-import { useHealthStatus } from './hooks/useHealthStatus';
+  useState,
+} from "react";
+import StatusChip from "./components/StatusChip";
+import FileEditorPanel from "./components/FileEditorPanel";
+import { useHealthStatus } from "./hooks/useHealthStatus";
 import {
   ApiError,
   createSession,
   deleteSession,
   fetchMeta,
+  fetchWorkspaceRootInfo,
   fetchMessages,
   fetchSessions,
   streamPostMessage,
-  updateMeta
-} from './api/client';
-import type { AppMeta, Message, PostMessageErrorResponse, Session, TurnItem } from './api/types';
-import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+  updateMeta,
+} from "./api/client";
+import type {
+  AppMeta,
+  Message,
+  PostMessageErrorResponse,
+  Session,
+  TurnItem,
+  WorkspaceRootInfo,
+} from "./api/types";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import WorkspaceRootModal from "./components/WorkspaceRootModal";
 
-const DEFAULT_SESSION_TITLE = 'New Chat';
-const THEME_STORAGE_KEY = 'codex:theme';
+const DEFAULT_SESSION_TITLE = "New Chat";
+const THEME_STORAGE_KEY = "codex:theme";
 
-const FALLBACK_MODELS = ['gpt-5-codex', 'gpt-5'];
-const FALLBACK_REASONING: AppMeta['reasoningEffort'][] = ['low', 'medium', 'high'];
+const FALLBACK_MODELS = ["gpt-5-codex", "gpt-5"];
+const FALLBACK_REASONING: AppMeta["reasoningEffort"][] = [
+  "low",
+  "medium",
+  "high",
+];
 
-type Theme = 'light' | 'dark';
+type Theme = "light" | "dark";
 
 const getInitialTheme = (): Theme => {
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return 'dark';
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return "dark";
   }
 
   try {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored === 'light' || stored === 'dark') {
+    if (stored === "light" || stored === "dark") {
       document.documentElement.dataset.theme = stored;
       return stored;
     }
   } catch (error) {
-    console.warn('Unable to read theme preference', error);
+    console.warn("Unable to read theme preference", error);
   }
 
-  document.documentElement.dataset.theme = 'dark';
-  return 'dark';
+  document.documentElement.dataset.theme = "dark";
+  return "dark";
 };
 
 const MAX_COMPOSER_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 const SUPPORTED_IMAGE_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/jpg',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml'
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
 ]);
 
 type ComposerAttachment = {
@@ -84,20 +97,20 @@ const formatFileSize = (bytes: number): string => {
 };
 
 const summarizeReasoningItem = (
-  item: TurnItem
+  item: TurnItem,
 ): { text: string | null; additional: string | null; lines: string[] } => {
   const record = item as Record<string, unknown>;
   const rawText = record.text;
-  const candidateText = typeof rawText === 'string' ? rawText.trim() : '';
+  const candidateText = typeof rawText === "string" ? rawText.trim() : "";
 
   const text = candidateText.length > 0 ? candidateText : null;
 
   const clone: Record<string, unknown> = { ...item };
   delete clone.type;
-  if ('text' in clone) {
+  if ("text" in clone) {
     delete clone.text;
   }
-  if ('id' in clone) {
+  if ("id" in clone) {
     delete clone.id;
   }
 
@@ -114,44 +127,43 @@ const summarizeReasoningItem = (
 };
 
 const ITEM_EMOJIS: Record<string, string> = {
-  reasoning: '\u{1f9e0}',
-  agent_message: '\u{1f4ac}',
-  file_change: '\u{1f4dd}',
-  command_execution: '\u{1f6e0}\u{fe0f}',
-  mcp_tool_call: '\u{1f916}',
-  web_search: '\u{1f50d}',
-  todo_list: '\u{1f5d2}\u{fe0f}',
-  error: '\u{26a0}\u{fe0f}'
+  reasoning: "\u{1f9e0}",
+  agent_message: "\u{1f4ac}",
+  file_change: "\u{1f4dd}",
+  command_execution: "\u{1f6e0}\u{fe0f}",
+  mcp_tool_call: "\u{1f916}",
+  web_search: "\u{1f50d}",
+  todo_list: "\u{1f5d2}\u{fe0f}",
+  error: "\u{26a0}\u{fe0f}",
 };
-
 
 const formatTitleCase = (value: string): string =>
   value
     .split(/[\s_-]+/)
     .filter((segment) => segment.length > 0)
     .map((segment) => segment[0]?.toUpperCase() + segment.slice(1))
-    .join(' ');
+    .join(" ");
 
 const getItemEmoji = (type: string): string => {
   const normalizedType = type.toLowerCase();
-  return ITEM_EMOJIS[normalizedType] ?? '\u{1f4cc}';
+  return ITEM_EMOJIS[normalizedType] ?? "\u{1f4cc}";
 };
 
 const stripAnsiSequences = (value: string): string =>
-  typeof value === 'string' ? value.replace(/\u001B\[[\d;]*m/g, '') : value;
+  typeof value === "string" ? value.replace(/\u001B\[[\d;]*m/g, "") : value;
 
 const formatStatusLabel = (value: unknown): string | null => {
-  if (typeof value !== 'string' || value.trim().length === 0) {
+  if (typeof value !== "string" || value.trim().length === 0) {
     return null;
   }
   return formatTitleCase(value.trim());
 };
 
 const coerceNumber = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
+  if (typeof value === "number" && Number.isFinite(value)) {
     return value;
   }
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const parsed = Number(value);
     if (Number.isFinite(parsed)) {
       return parsed;
@@ -161,21 +173,20 @@ const coerceNumber = (value: unknown): number | null => {
 };
 
 const sessionDateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  hour: 'numeric',
-  minute: 'numeric'
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
 });
 
 const messageTimeFormatter = new Intl.DateTimeFormat(undefined, {
-  hour: 'numeric',
-  minute: 'numeric'
+  hour: "numeric",
+  minute: "numeric",
 });
 
 const sortSessions = (sessions: Session[]) =>
   [...sessions].sort(
-    (a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
 
 function App() {
@@ -187,17 +198,28 @@ function App() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
-  const [composerValue, setComposerValue] = useState('');
+  const [composerValue, setComposerValue] = useState("");
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme());
   const [meta, setMeta] = useState<AppMeta | null>(null);
   const [updatingMeta, setUpdatingMeta] = useState(false);
-  const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
-  const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
-  const [chatViewMode, setChatViewMode] = useState<'formatted' | 'detailed' | 'raw' | 'editor'>(
-    'formatted'
+  const [composerAttachments, setComposerAttachments] = useState<
+    ComposerAttachment[]
+  >([]);
+  const [imagePreview, setImagePreview] = useState<{
+    url: string;
+    filename: string;
+  } | null>(null);
+  const [chatViewMode, setChatViewMode] = useState<
+    "formatted" | "detailed" | "raw" | "editor"
+  >("formatted");
+  const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(
+    new Set(),
   );
-  const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(new Set());
+  const [workspaceInfo, setWorkspaceInfo] = useState<WorkspaceRootInfo | null>(
+    null,
+  );
+  const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
@@ -216,29 +238,32 @@ function App() {
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
-    [sessions, activeSessionId]
+    [sessions, activeSessionId],
   );
-  const rawMessagesJson = useMemo(() => JSON.stringify(messages, null, 2), [messages]);
-  const isRawView = chatViewMode === 'raw';
-  const isDetailedView = chatViewMode === 'detailed';
-  const isFileEditorView = chatViewMode === 'editor';
+  const rawMessagesJson = useMemo(
+    () => JSON.stringify(messages, null, 2),
+    [messages],
+  );
+  const isRawView = chatViewMode === "raw";
+  const isDetailedView = chatViewMode === "detailed";
+  const isFileEditorView = chatViewMode === "editor";
   const markdownPlugins = useMemo(() => [remarkGfm], []);
   const inlineMarkdownComponents = useMemo<Components>(
     () => ({
       p: ({ node, ...props }) => <span {...props} />,
       a: ({ node, ...props }) => (
         <a {...props} target="_blank" rel="noreferrer" />
-      )
+      ),
     }),
-    []
+    [],
   );
   const blockMarkdownComponents = useMemo<Components>(
     () => ({
       a: ({ node, ...props }) => (
         <a {...props} target="_blank" rel="noreferrer" />
-      )
+      ),
     }),
-    []
+    [],
   );
 
   useEffect(() => {
@@ -256,7 +281,7 @@ function App() {
         setSessions(sorted);
         setActiveSessionId((previous) => previous ?? sorted[0]?.id ?? null);
       } catch (error) {
-        console.error('Failed to load sessions', error);
+        console.error("Failed to load sessions", error);
       } finally {
         if (!canceled) {
           setLoadingSessions(false);
@@ -287,7 +312,7 @@ function App() {
         }
         setMessages(data);
       } catch (error) {
-        console.error('Failed to load messages', error);
+        console.error("Failed to load messages", error);
       } finally {
         if (!canceled) {
           setLoadingMessages(false);
@@ -303,7 +328,7 @@ function App() {
   }, [activeSessionId]);
 
   useEffect(() => {
-    if (chatViewMode === 'raw') {
+    if (chatViewMode === "raw") {
       return;
     }
 
@@ -311,7 +336,7 @@ function App() {
     if (!container) {
       return;
     }
-    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [messages, chatViewMode]);
 
   useEffect(() => {
@@ -323,13 +348,13 @@ function App() {
     for (const message of messages) {
       const items = message.items ?? [];
       items.forEach((item, index) => {
-        if (!item || typeof item !== 'object') {
+        if (!item || typeof item !== "object") {
           return;
         }
         const record = item as { type?: unknown; id?: unknown };
-        if (record.type === 'file_change') {
+        if (record.type === "file_change") {
           const candidateId =
-            typeof record.id === 'string' && record.id.length > 0
+            typeof record.id === "string" && record.id.length > 0
               ? record.id
               : `${message.id}-item-${index}`;
           validKeys.add(candidateId);
@@ -361,17 +386,17 @@ function App() {
     }
 
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         setImagePreview(null);
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousOverflow;
     };
   }, [imagePreview]);
@@ -385,7 +410,7 @@ function App() {
           setMeta(settings);
         }
       } catch (error) {
-        console.warn('Failed to load application metadata', error);
+        console.warn("Failed to load application metadata", error);
       }
     };
 
@@ -397,20 +422,49 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (typeof document !== 'undefined') {
+    let canceled = false;
+    const loadWorkspace = async () => {
+      try {
+        const info = await fetchWorkspaceRootInfo();
+        if (!canceled) {
+          setWorkspaceInfo(info);
+        }
+      } catch (error) {
+        console.warn("Failed to load workspace information", error);
+      }
+    };
+
+    void loadWorkspace();
+
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
       document.documentElement.dataset.theme = theme;
     }
 
     try {
       window.localStorage.setItem(THEME_STORAGE_KEY, theme);
     } catch (error) {
-      console.warn('Unable to persist theme preference', error);
+      console.warn("Unable to persist theme preference", error);
     }
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme((previous) => (previous === 'dark' ? 'light' : 'dark'));
+    setTheme((previous) => (previous === "dark" ? "light" : "dark"));
   };
+
+  const refreshWorkspaceInfo = useCallback(async () => {
+    try {
+      const info = await fetchWorkspaceRootInfo();
+      setWorkspaceInfo(info);
+    } catch (error) {
+      console.warn("Failed to refresh workspace info", error);
+    }
+  }, []);
 
   const readFileAsDataUrl = useCallback(
     (file: File): Promise<{ dataUrl: string; base64: string }> =>
@@ -418,17 +472,18 @@ function App() {
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result;
-          if (typeof result !== 'string') {
-            reject(new Error('Unable to read file.'));
+          if (typeof result !== "string") {
+            reject(new Error("Unable to read file."));
             return;
           }
-          const [, base64 = ''] = result.split(',');
+          const [, base64 = ""] = result.split(",");
           resolve({ dataUrl: result, base64 });
         };
-        reader.onerror = () => reject(reader.error ?? new Error('Unable to read file.'));
+        reader.onerror = () =>
+          reject(reader.error ?? new Error("Unable to read file."));
         reader.readAsDataURL(file);
       }),
-    []
+    [],
   );
 
   const addAttachments = useCallback(
@@ -437,9 +492,12 @@ function App() {
         return;
       }
 
-      const availableSlots = MAX_COMPOSER_ATTACHMENTS - composerAttachments.length;
+      const availableSlots =
+        MAX_COMPOSER_ATTACHMENTS - composerAttachments.length;
       if (availableSlots <= 0) {
-        setErrorNotice(`You can attach up to ${MAX_COMPOSER_ATTACHMENTS} images.`);
+        setErrorNotice(
+          `You can attach up to ${MAX_COMPOSER_ATTACHMENTS} images.`,
+        );
         return;
       }
 
@@ -447,15 +505,16 @@ function App() {
 
       for (const file of files) {
         if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
-          setErrorNotice(`Unsupported image type: ${file.type || 'unknown'}`);
+          setErrorNotice(`Unsupported image type: ${file.type || "unknown"}`);
           continue;
         }
 
         if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
           setErrorNotice(
-            `Image ${file.name} exceeds ${(MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)).toFixed(
-              1
-            )} MB limit.`
+            `Image ${file.name} exceeds ${(
+              MAX_ATTACHMENT_SIZE_BYTES /
+              (1024 * 1024)
+            ).toFixed(1)} MB limit.`,
           );
           continue;
         }
@@ -477,13 +536,13 @@ function App() {
             mimeType: file.type,
             size: file.size,
             dataUrl,
-            base64
+            base64,
           });
         } catch (error) {
           setErrorNotice(
             error instanceof Error
               ? `Unable to read ${file.name}: ${error.message}`
-              : `Unable to read ${file.name}`
+              : `Unable to read ${file.name}`,
           );
         }
       }
@@ -492,7 +551,7 @@ function App() {
         setComposerAttachments((previous) => [...previous, ...accepted]);
       }
     },
-    [composerAttachments.length, readFileAsDataUrl]
+    [composerAttachments.length, readFileAsDataUrl],
   );
 
   const handleAddImagesClick = () => {
@@ -504,7 +563,7 @@ function App() {
     if (files.length) {
       void addAttachments(files);
     }
-    event.target.value = '';
+    event.target.value = "";
   };
 
   const handleComposerPaste = useCallback(
@@ -516,7 +575,7 @@ function App() {
 
       const files: File[] = [];
       for (const item of Array.from(items)) {
-        if (item.type.startsWith('image/')) {
+        if (item.type.startsWith("image/")) {
           const file = item.getAsFile();
           if (file) {
             files.push(file);
@@ -528,7 +587,7 @@ function App() {
         void addAttachments(files);
       }
     },
-    [addAttachments]
+    [addAttachments],
   );
 
   const handleModelChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -550,9 +609,9 @@ function App() {
         setMeta(updated);
       })
       .catch((error) => {
-        console.error('Failed to update model setting', error);
+        console.error("Failed to update model setting", error);
         setMeta(previousMeta);
-        setErrorNotice('Unable to update model preference. Please try again.');
+        setErrorNotice("Unable to update model preference. Please try again.");
       })
       .finally(() => {
         setUpdatingMeta(false);
@@ -571,28 +630,34 @@ function App() {
       details?: JSX.Element | null;
     };
 
-    const buildFlatItemEntry = (rawItem: TurnItem, index: number): FlatItemEntry | null => {
-      if (!rawItem || typeof rawItem !== 'object') {
+    const buildFlatItemEntry = (
+      rawItem: TurnItem,
+      index: number,
+    ): FlatItemEntry | null => {
+      if (!rawItem || typeof rawItem !== "object") {
         return null;
       }
 
       const record = rawItem as Record<string, unknown>;
       const typeValue =
-        typeof record.type === 'string' && record.type.length > 0 ? record.type : 'item';
+        typeof record.type === "string" && record.type.length > 0
+          ? record.type
+          : "item";
 
-      if (typeValue === 'agent_message') {
+      if (typeValue === "agent_message") {
         return null;
       }
 
       const key =
-        typeof record.id === 'string' && record.id.length > 0
+        typeof record.id === "string" && record.id.length > 0
           ? record.id
           : `${message.id}-item-${index}`;
       const emoji = getItemEmoji(typeValue);
 
-      if (typeValue === 'reasoning') {
+      if (typeValue === "reasoning") {
         const summary = summarizeReasoningItem(rawItem);
-        const textValue = summary.text ?? summary.lines.join(' ') ?? 'Reasoning step.';
+        const textValue =
+          summary.text ?? summary.lines.join(" ") ?? "Reasoning step.";
 
         return {
           key,
@@ -605,68 +670,73 @@ function App() {
             >
               {textValue}
             </ReactMarkdown>
-          )
+          ),
         };
       }
 
       const resolveStatusLabel = (): string | null => {
         const baseStatus = formatStatusLabel(record.status);
-        if (typeValue === 'command_execution') {
+        if (typeValue === "command_execution") {
           const exitCode = coerceNumber(record.exit_code);
           if (exitCode !== null) {
-            return baseStatus ? `${baseStatus} · exit ${exitCode}` : `Exit ${exitCode}`;
+            return baseStatus
+              ? `${baseStatus} · exit ${exitCode}`
+              : `Exit ${exitCode}`;
           }
         }
         return baseStatus;
       };
 
-      if (typeValue === 'file_change') {
+      if (typeValue === "file_change") {
         const changes = Array.isArray(record.changes) ? record.changes : [];
         if (changes.length === 0) {
           return {
             key,
             emoji,
-            content: <span>File changes recorded.</span>
+            content: <span>File changes recorded.</span>,
           };
         }
 
         const firstChange = (changes[0] as Record<string, unknown>) ?? {};
         const pathValue =
-          typeof firstChange.path === 'string' && firstChange.path.length > 0
+          typeof firstChange.path === "string" && firstChange.path.length > 0
             ? firstChange.path
-            : 'Unknown path';
+            : "Unknown path";
         const kindValue =
-          typeof firstChange.kind === 'string' && firstChange.kind.length > 0
+          typeof firstChange.kind === "string" && firstChange.kind.length > 0
             ? formatTitleCase(firstChange.kind)
-            : 'Updated';
-        const suffix = changes.length > 1 ? ` (+${changes.length - 1} more)` : '';
+            : "Updated";
+        const suffix =
+          changes.length > 1 ? ` (+${changes.length - 1} more)` : "";
 
         const detailEntries = changes
           .map((change, changeIndex) => {
-            if (!change || typeof change !== 'object') {
+            if (!change || typeof change !== "object") {
               return null;
             }
             const changeRecord = change as Record<string, unknown>;
             const detailPath =
-              typeof changeRecord.path === 'string' && changeRecord.path.length > 0
+              typeof changeRecord.path === "string" &&
+              changeRecord.path.length > 0
                 ? changeRecord.path
                 : pathValue;
             const detailKindSource =
-              typeof changeRecord.kind === 'string' && changeRecord.kind.length > 0
+              typeof changeRecord.kind === "string" &&
+              changeRecord.kind.length > 0
                 ? changeRecord.kind
                 : kindValue;
             const detailKind = formatTitleCase(String(detailKindSource));
             const diffText = (() => {
               const diff = changeRecord.diff;
-              if (typeof diff === 'string' && diff.trim().length > 0) {
+              if (typeof diff === "string" && diff.trim().length > 0) {
                 return stripAnsiSequences(diff.trim());
               }
               const patch = changeRecord.patch;
-              if (typeof patch === 'string' && patch.trim().length > 0) {
+              if (typeof patch === "string" && patch.trim().length > 0) {
                 return stripAnsiSequences(patch.trim());
               }
               const summary = changeRecord.summary;
-              if (typeof summary === 'string' && summary.trim().length > 0) {
+              if (typeof summary === "string" && summary.trim().length > 0) {
                 return stripAnsiSequences(summary.trim());
               }
               return null;
@@ -677,7 +747,10 @@ function App() {
                 ? (() => {
                     const lines = diffText
                       .split(/\r?\n/)
-                      .filter((line, idx, arr) => !(idx === arr.length - 1 && line.trim().length === 0));
+                      .filter(
+                        (line, idx, arr) =>
+                          !(idx === arr.length - 1 && line.trim().length === 0),
+                      );
                     if (lines.length === 0) {
                       return null;
                     }
@@ -685,20 +758,21 @@ function App() {
                       <pre className="message-item-pre message-item-pre-diff">
                         {lines.map((line, lineIndex) => {
                           const normalizedLine = stripAnsiSequences(line);
-                          const lineClass =
-                            normalizedLine.startsWith('+')
-                              ? 'message-item-diff-line message-item-diff-line-add'
-                              : normalizedLine.startsWith('-')
-                              ? 'message-item-diff-line message-item-diff-line-remove'
-                              : normalizedLine.startsWith('@')
-                              ? 'message-item-diff-line message-item-diff-line-hunk'
-                              : 'message-item-diff-line';
+                          const lineClass = normalizedLine.startsWith("+")
+                            ? "message-item-diff-line message-item-diff-line-add"
+                            : normalizedLine.startsWith("-")
+                              ? "message-item-diff-line message-item-diff-line-remove"
+                              : normalizedLine.startsWith("@")
+                                ? "message-item-diff-line message-item-diff-line-hunk"
+                                : "message-item-diff-line";
                           return (
                             <span
                               key={`${key}-detail-${changeIndex}-line-${lineIndex}`}
                               className={lineClass}
                             >
-                              {normalizedLine.length > 0 ? normalizedLine : '\u00a0'}
+                              {normalizedLine.length > 0
+                                ? normalizedLine
+                                : "\u00a0"}
                             </span>
                           );
                         })}
@@ -708,7 +782,10 @@ function App() {
                 : null;
 
             return (
-              <div key={`${key}-detail-${changeIndex}`} className="message-item-file-detail">
+              <div
+                key={`${key}-detail-${changeIndex}`}
+                className="message-item-file-detail"
+              >
                 <div className="message-item-file-meta">
                   <span className="message-item-change-kind">{detailKind}</span>
                   <code className="message-item-inline-code">{detailPath}</code>
@@ -729,26 +806,26 @@ function App() {
           emoji,
           content: (
             <span>
-              {kindValue}{' '}
+              {kindValue}{" "}
               <code className="message-item-inline-code">{pathValue}</code>
               {suffix}
             </span>
           ),
           expandable: details !== null,
-          details
+          details,
         };
       }
 
-      if (typeValue === 'command_execution') {
+      if (typeValue === "command_execution") {
         const commandText =
-          typeof record.command === 'string' && record.command.trim().length > 0
+          typeof record.command === "string" && record.command.trim().length > 0
             ? record.command
-            : 'Command unavailable.';
+            : "Command unavailable.";
         const statusLabel = resolveStatusLabel();
         const aggregatedOutput =
-          typeof record.aggregated_output === 'string'
+          typeof record.aggregated_output === "string"
             ? record.aggregated_output.trim()
-            : '';
+            : "";
         const truncatedOutput =
           aggregatedOutput.length > 160
             ? `${aggregatedOutput.slice(0, 160)}…`
@@ -760,26 +837,28 @@ function App() {
           content: (
             <span>
               <code className="message-item-inline-code">{commandText}</code>
-              {statusLabel ? ` · ${statusLabel}` : ''}
-              {truncatedOutput.length > 0 ? ` · ${truncatedOutput}` : ''}
+              {statusLabel ? ` · ${statusLabel}` : ""}
+              {truncatedOutput.length > 0 ? ` · ${truncatedOutput}` : ""}
             </span>
-          )
+          ),
         };
       }
 
-      if (typeValue === 'mcp_tool_call') {
+      if (typeValue === "mcp_tool_call") {
         const server =
-          typeof record.server === 'string' && record.server.length > 0
+          typeof record.server === "string" && record.server.length > 0
             ? record.server
             : null;
         const tool =
-          typeof record.tool === 'string' && record.tool.length > 0
+          typeof record.tool === "string" && record.tool.length > 0
             ? record.tool
             : null;
         const label =
           server || tool
-            ? [server, tool ? `tool: ${tool}` : null].filter(Boolean).join(' · ')
-            : 'Tool call';
+            ? [server, tool ? `tool: ${tool}` : null]
+                .filter(Boolean)
+                .join(" · ")
+            : "Tool call";
         const statusLabel = resolveStatusLabel();
 
         return {
@@ -788,17 +867,17 @@ function App() {
           content: (
             <span>
               {label}
-              {statusLabel ? ` · ${statusLabel}` : ''}
+              {statusLabel ? ` · ${statusLabel}` : ""}
             </span>
-          )
+          ),
         };
       }
 
-      if (typeValue === 'web_search') {
+      if (typeValue === "web_search") {
         const query =
-          typeof record.query === 'string' && record.query.trim().length > 0
+          typeof record.query === "string" && record.query.trim().length > 0
             ? record.query.trim()
-            : 'Unknown query';
+            : "Unknown query";
         return {
           key,
           emoji,
@@ -806,53 +885,54 @@ function App() {
             <span>
               Search for <span className="message-item-highlight">{query}</span>
             </span>
-          )
+          ),
         };
       }
 
-      if (typeValue === 'todo_list') {
+      if (typeValue === "todo_list") {
         const items = Array.isArray(record.items) ? record.items : [];
         if (items.length === 0) {
           return {
             key,
             emoji,
-            content: <span>To-do list updated.</span>
+            content: <span>To-do list updated.</span>,
           };
         }
 
         const summaries = items
           .map((entry, todoIndex) => {
-            if (!entry || typeof entry !== 'object') {
+            if (!entry || typeof entry !== "object") {
               return null;
             }
             const todoRecord = entry as Record<string, unknown>;
             const textValue =
-              typeof todoRecord.text === 'string' && todoRecord.text.length > 0
+              typeof todoRecord.text === "string" && todoRecord.text.length > 0
                 ? todoRecord.text
                 : `Item ${todoIndex + 1}`;
-            const checkbox = Boolean(todoRecord.completed) ? '[x]' : '[ ]';
+            const checkbox = Boolean(todoRecord.completed) ? "[x]" : "[ ]";
             return `${checkbox} ${textValue}`;
           })
           .filter((value): value is string => value !== null);
-        const preview = summaries.slice(0, 2).join('; ');
-        const suffix = summaries.length > 2 ? ` (+${summaries.length - 2} more)` : '';
+        const preview = summaries.slice(0, 2).join("; ");
+        const suffix =
+          summaries.length > 2 ? ` (+${summaries.length - 2} more)` : "";
 
         return {
           key,
           emoji,
-          content: <span>{`${preview}${suffix}`}</span>
+          content: <span>{`${preview}${suffix}`}</span>,
         };
       }
 
-      if (typeValue === 'error') {
+      if (typeValue === "error") {
         const messageText =
-          typeof record.message === 'string' && record.message.trim().length > 0
+          typeof record.message === "string" && record.message.trim().length > 0
             ? record.message.trim()
-            : 'Error reported.';
+            : "Error reported.";
         return {
           key,
           emoji,
-          content: <span className="message-item-error">{messageText}</span>
+          content: <span className="message-item-error">{messageText}</span>,
         };
       }
 
@@ -860,7 +940,7 @@ function App() {
       return {
         key,
         emoji,
-        content: <span>{fallbackText}</span>
+        content: <span>{fallbackText}</span>,
       };
     };
 
@@ -873,98 +953,105 @@ function App() {
     const hasDetailedItems = detailedEntries.length > 0;
 
     const primaryContent =
-      typeof message.content === 'string' ? message.content : '';
+      typeof message.content === "string" ? message.content : "";
     const trimmedPrimaryContent = primaryContent.trim();
     const fallbackContent = (() => {
       for (const item of messageItems) {
-        if (!item || typeof item !== 'object') {
+        if (!item || typeof item !== "object") {
           continue;
         }
         const { type } = item as { type?: unknown };
-        if (type === 'agent_message' || type === 'message') {
+        if (type === "agent_message" || type === "message") {
           const candidate = (item as { text?: unknown }).text;
-          if (typeof candidate === 'string' && candidate.trim().length > 0) {
+          if (typeof candidate === "string" && candidate.trim().length > 0) {
             return candidate;
           }
         }
       }
-      return '';
+      return "";
     })();
     const displayContent =
       trimmedPrimaryContent.length > 0 ? primaryContent : fallbackContent;
     const trimmedContent = displayContent.trim();
     const hasContent = trimmedContent.length > 0;
-    const detailedItemsBlock = hasDetailedItems
-      ? (
-          <>
-            <div className="message-items">
-              {detailedEntries.map((entry) => {
-                const expandable = Boolean(entry.expandable && entry.details);
-                const isExpanded = expandedItemKeys.has(entry.key);
+    const detailedItemsBlock = hasDetailedItems ? (
+      <>
+        <div className="message-items">
+          {detailedEntries.map((entry) => {
+            const expandable = Boolean(entry.expandable && entry.details);
+            const isExpanded = expandedItemKeys.has(entry.key);
 
-                return (
-                  <div
-                    key={entry.key}
-                    className={`message-item-row${expandable ? ' message-item-row-expandable' : ''}`}
-                  >
-                    {expandable ? (
-                      <>
-                        <button
-                          type="button"
-                          className="message-item-toggle"
-                          onClick={() => toggleItemExpansion(entry.key)}
-                          aria-expanded={isExpanded}
-                        >
-                          <span className="message-item-expand-icon" aria-hidden="true">
-                            {isExpanded ? '▾' : '▸'}
-                          </span>
-                          <span className="message-item-icon" aria-hidden="true">
-                            {entry.emoji}
-                          </span>
-                          <span className="message-item-content">{entry.content}</span>
-                        </button>
-                        {isExpanded && entry.details ? (
-                          <div className="message-item-details-block">{entry.details}</div>
-                        ) : null}
-                      </>
-                    ) : (
-                      <div className="message-item-static">
-                        <span className="message-item-icon" aria-hidden="true">
-                          {entry.emoji}
-                        </span>
-                        <span className="message-item-content">{entry.content}</span>
+            return (
+              <div
+                key={entry.key}
+                className={`message-item-row${expandable ? " message-item-row-expandable" : ""}`}
+              >
+                {expandable ? (
+                  <>
+                    <button
+                      type="button"
+                      className="message-item-toggle"
+                      onClick={() => toggleItemExpansion(entry.key)}
+                      aria-expanded={isExpanded}
+                    >
+                      <span
+                        className="message-item-expand-icon"
+                        aria-hidden="true"
+                      >
+                        {isExpanded ? "▾" : "▸"}
+                      </span>
+                      <span className="message-item-icon" aria-hidden="true">
+                        {entry.emoji}
+                      </span>
+                      <span className="message-item-content">
+                        {entry.content}
+                      </span>
+                    </button>
+                    {isExpanded && entry.details ? (
+                      <div className="message-item-details-block">
+                        {entry.details}
                       </div>
-                    )}
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="message-item-static">
+                    <span className="message-item-icon" aria-hidden="true">
+                      {entry.emoji}
+                    </span>
+                    <span className="message-item-content">
+                      {entry.content}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-            {hasContent ? (
-              <div className="message-items-separator" aria-hidden="true" />
-            ) : null}
-          </>
-        )
-      : null;
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {hasContent ? (
+          <div className="message-items-separator" aria-hidden="true" />
+        ) : null}
+      </>
+    ) : null;
     const placeholderText =
-      message.role === 'assistant'
-        ? sendingMessage && message.id.startsWith('temp-')
-          ? 'Codex is thinking…'
+      message.role === "assistant"
+        ? sendingMessage && message.id.startsWith("temp-")
+          ? "Codex is thinking…"
           : messageItems.length > 0
-          ? 'Codex responded with structured output.'
-          : 'No response yet.'
-      : message.role === 'user'
-      ? 'Empty message.'
-      : 'System notice.';
+            ? "Codex responded with structured output."
+            : "No response yet."
+        : message.role === "user"
+          ? "Empty message."
+          : "System notice.";
 
     return (
       <article key={message.id} className={`message message-${message.role}`}>
         <header className="message-meta">
           <span className="message-role">
-            {message.role === 'assistant'
-              ? 'Codex'
-              : message.role === 'user'
-              ? 'You'
-              : 'System'}
+            {message.role === "assistant"
+              ? "Codex"
+              : message.role === "user"
+                ? "You"
+                : "System"}
           </span>
           <span className="message-timestamp">
             {messageTimeFormatter.format(new Date(message.createdAt))}
@@ -986,14 +1073,14 @@ function App() {
           <div className="message-attachments">
             {attachments.map((attachment) => (
               <figure key={attachment.id} className="message-attachment">
-                {attachment.mimeType.startsWith('image/') ? (
+                {attachment.mimeType.startsWith("image/") ? (
                   <button
                     type="button"
                     className="message-attachment-image"
                     onClick={() =>
                       setImagePreview({
                         url: attachment.url,
-                        filename: attachment.filename
+                        filename: attachment.filename,
                       })
                     }
                     aria-label={`Preview ${attachment.filename}`}
@@ -1011,14 +1098,14 @@ function App() {
                   </a>
                 )}
                 <figcaption>
-                  {attachment.mimeType.startsWith('image/') ? (
+                  {attachment.mimeType.startsWith("image/") ? (
                     <button
                       type="button"
                       className="message-attachment-filename-button"
                       onClick={() =>
                         setImagePreview({
                           url: attachment.url,
-                          filename: attachment.filename
+                          filename: attachment.filename,
                         })
                       }
                     >
@@ -1043,12 +1130,14 @@ function App() {
     );
   };
 
-  const handleReasoningEffortChange = (event: ChangeEvent<HTMLSelectElement>) => {
+  const handleReasoningEffortChange = (
+    event: ChangeEvent<HTMLSelectElement>,
+  ) => {
     if (!meta || updatingMeta) {
       return;
     }
 
-    const nextEffort = event.target.value as AppMeta['reasoningEffort'];
+    const nextEffort = event.target.value as AppMeta["reasoningEffort"];
     if (nextEffort === meta.reasoningEffort) {
       return;
     }
@@ -1062,9 +1151,9 @@ function App() {
         setMeta(updated);
       })
       .catch((error) => {
-        console.error('Failed to update reasoning effort', error);
+        console.error("Failed to update reasoning effort", error);
         setMeta(previousMeta);
-        setErrorNotice('Unable to update reasoning effort. Please try again.');
+        setErrorNotice("Unable to update reasoning effort. Please try again.");
       })
       .finally(() => {
         setUpdatingMeta(false);
@@ -1073,12 +1162,12 @@ function App() {
 
   const handleRemoveAttachment = (attachmentId: string) => {
     setComposerAttachments((previous) =>
-      previous.filter((attachment) => attachment.id !== attachmentId)
+      previous.filter((attachment) => attachment.id !== attachmentId),
     );
   };
 
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== 'Enter') {
+    if (event.key !== "Enter") {
       return;
     }
 
@@ -1087,7 +1176,8 @@ function App() {
     const value = textarea.value;
     const selectionStart = textarea.selectionStart ?? value.length;
     const selectionEnd = textarea.selectionEnd ?? value.length;
-    const cursorAtEnd = selectionStart === value.length && selectionEnd === value.length;
+    const cursorAtEnd =
+      selectionStart === value.length && selectionEnd === value.length;
     const shouldSubmit = ctrlKey || metaKey || (!shiftKey && cursorAtEnd);
 
     if (!shouldSubmit) {
@@ -1111,10 +1201,10 @@ function App() {
       setSessions((prev) => sortSessions([session, ...prev]));
       setActiveSessionId(session.id);
       setMessages([]);
-      setComposerValue('');
+      setComposerValue("");
     } catch (error) {
-      console.error('Failed to create session', error);
-      setErrorNotice('Unable to create a new session. Please try again.');
+      console.error("Failed to create session", error);
+      setErrorNotice("Unable to create a new session. Please try again.");
     } finally {
       setCreatingSession(false);
     }
@@ -1126,7 +1216,7 @@ function App() {
     }
     setActiveSessionId(sessionId);
     setErrorNotice(null);
-    setComposerValue('');
+    setComposerValue("");
   };
 
   const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
@@ -1148,12 +1238,12 @@ function App() {
       filename: attachment.name,
       mimeType: attachment.mimeType,
       size: attachment.size,
-      base64: attachment.base64
+      base64: attachment.base64,
     }));
 
     const payload = {
       content: trimmedContent,
-      attachments: attachmentUploads.length > 0 ? attachmentUploads : undefined
+      attachments: attachmentUploads.length > 0 ? attachmentUploads : undefined,
     };
 
     try {
@@ -1163,20 +1253,21 @@ function App() {
       let userMessageCreatedAt: string | null = null;
 
       for await (const streamEvent of stream) {
-        const viewingTargetSession = activeSessionIdRef.current === targetSessionId;
+        const viewingTargetSession =
+          activeSessionIdRef.current === targetSessionId;
 
-        if (streamEvent.type === 'user_message') {
+        if (streamEvent.type === "user_message") {
           const normalizedMessage: Message = {
             ...streamEvent.message,
             attachments: streamEvent.message.attachments ?? [],
-            items: streamEvent.message.items ?? []
+            items: streamEvent.message.items ?? [],
           };
 
           userMessageCreatedAt = normalizedMessage.createdAt;
 
           if (viewingTargetSession) {
             setMessages((previous) => [...previous, normalizedMessage]);
-            setComposerValue('');
+            setComposerValue("");
             setComposerAttachments([]);
           }
 
@@ -1202,19 +1293,20 @@ function App() {
               return {
                 ...session,
                 title: inferredTitle,
-                updatedAt: normalizedMessage.createdAt
+                updatedAt: normalizedMessage.createdAt,
               };
             });
 
             if (!found) {
               updated.push({
                 id: targetSessionId,
-                title: normalizedMessage.content.trim().length > 0
-                  ? normalizedMessage.content.trim()
-                  : DEFAULT_SESSION_TITLE,
+                title:
+                  normalizedMessage.content.trim().length > 0
+                    ? normalizedMessage.content.trim()
+                    : DEFAULT_SESSION_TITLE,
                 codexThreadId: null,
                 createdAt: normalizedMessage.createdAt,
-                updatedAt: normalizedMessage.createdAt
+                updatedAt: normalizedMessage.createdAt,
               });
             }
 
@@ -1223,16 +1315,18 @@ function App() {
           continue;
         }
 
-        if (streamEvent.type === 'assistant_message_snapshot') {
+        if (streamEvent.type === "assistant_message_snapshot") {
           if (viewingTargetSession) {
             const normalizedMessage: Message = {
               ...streamEvent.message,
               attachments: streamEvent.message.attachments ?? [],
-              items: streamEvent.message.items ?? []
+              items: streamEvent.message.items ?? [],
             };
 
             setMessages((previous) => {
-              const existingIndex = previous.findIndex((message) => message.id === normalizedMessage.id);
+              const existingIndex = previous.findIndex(
+                (message) => message.id === normalizedMessage.id,
+              );
               if (existingIndex >= 0) {
                 const nextMessages = [...previous];
                 nextMessages[existingIndex] = normalizedMessage;
@@ -1244,11 +1338,11 @@ function App() {
           continue;
         }
 
-        if (streamEvent.type === 'assistant_message_final') {
+        if (streamEvent.type === "assistant_message_final") {
           const normalizedMessage: Message = {
             ...streamEvent.message,
             attachments: streamEvent.message.attachments ?? [],
-            items: streamEvent.message.items ?? []
+            items: streamEvent.message.items ?? [],
           };
 
           sawAssistantFinal = true;
@@ -1257,7 +1351,7 @@ function App() {
             setMessages((previous) => {
               const nextMessages = [...previous];
               const tempIndex = nextMessages.findIndex(
-                (message) => message.id === streamEvent.temporaryId
+                (message) => message.id === streamEvent.temporaryId,
               );
               if (tempIndex >= 0) {
                 nextMessages.splice(tempIndex, 1, normalizedMessage);
@@ -1280,7 +1374,7 @@ function App() {
                 ...session,
                 title: streamEvent.session.title,
                 codexThreadId: streamEvent.session.codexThreadId,
-                updatedAt: streamEvent.session.updatedAt
+                updatedAt: streamEvent.session.updatedAt,
               };
             });
 
@@ -1293,11 +1387,11 @@ function App() {
           continue;
         }
 
-        if (streamEvent.type === 'error') {
+        if (streamEvent.type === "error") {
           const tempId = streamEvent.temporaryId;
           if (tempId && viewingTargetSession) {
             setMessages((previous) =>
-              previous.filter((message) => message.id !== tempId)
+              previous.filter((message) => message.id !== tempId),
             );
           }
 
@@ -1306,11 +1400,11 @@ function App() {
               ...previous,
               {
                 id: `error-${Date.now()}`,
-                role: 'system',
+                role: "system",
                 content: `Codex error: ${streamEvent.message}`,
                 createdAt: new Date().toISOString(),
-                attachments: []
-              }
+                attachments: [],
+              },
             ]);
           }
 
@@ -1319,7 +1413,7 @@ function App() {
           streamCompleted = true;
         }
 
-        if (streamEvent.type === 'done') {
+        if (streamEvent.type === "done") {
           streamCompleted = true;
         }
 
@@ -1329,12 +1423,14 @@ function App() {
       }
 
       if (!sawAssistantFinal) {
-        const pollForAssistant = async (remainingAttempts: number): Promise<void> => {
+        const pollForAssistant = async (
+          remainingAttempts: number,
+        ): Promise<void> => {
           try {
             const latestMessages = await fetchMessages(targetSessionId);
             const latestAssistantMessage = [...latestMessages]
               .reverse()
-              .find((message) => message.role === 'assistant');
+              .find((message) => message.role === "assistant");
 
             const hasFinalAssistant =
               latestAssistantMessage &&
@@ -1352,12 +1448,18 @@ function App() {
                 const latestSessions = await fetchSessions();
                 setSessions(sortSessions(latestSessions));
               } catch (sessionSyncError) {
-                console.error('Failed to synchronize sessions after interrupted stream', sessionSyncError);
+                console.error(
+                  "Failed to synchronize sessions after interrupted stream",
+                  sessionSyncError,
+                );
               }
               return;
             }
           } catch (syncError) {
-            console.error('Failed to synchronize messages after interrupted stream', syncError);
+            console.error(
+              "Failed to synchronize messages after interrupted stream",
+              syncError,
+            );
           }
 
           if (remainingAttempts > 0) {
@@ -1365,7 +1467,9 @@ function App() {
               void pollForAssistant(remainingAttempts - 1);
             }, 1000);
           } else {
-            console.warn('Stream ended without assistant_message_final; unable to synchronize responses.');
+            console.warn(
+              "Stream ended without assistant_message_final; unable to synchronize responses.",
+            );
           }
         };
 
@@ -1374,12 +1478,12 @@ function App() {
     } catch (error) {
       if (error instanceof ApiError) {
         const body = error.body;
-        if (body && typeof body === 'object' && 'userMessage' in body) {
+        if (body && typeof body === "object" && "userMessage" in body) {
           const apiBody = body as PostMessageErrorResponse;
           const normalizedErrorMessage: Message = {
             ...apiBody.userMessage,
             attachments: apiBody.userMessage.attachments ?? [],
-            items: apiBody.userMessage.items ?? []
+            items: apiBody.userMessage.items ?? [],
           };
 
           if (activeSessionIdRef.current === targetSessionId) {
@@ -1388,29 +1492,31 @@ function App() {
               normalizedErrorMessage,
               {
                 id: `error-${Date.now()}`,
-                role: 'system',
+                role: "system",
                 content: `Codex error: ${apiBody.message}`,
                 createdAt: new Date().toISOString(),
-                attachments: []
-              }
+                attachments: [],
+              },
             ]);
           }
 
           setSessions((previous) => sortSessions(previous));
           setErrorNotice(apiBody.message);
-        } else if (body && typeof body === 'object' && 'message' in body) {
+        } else if (body && typeof body === "object" && "message" in body) {
           const bodyMessage = (body as { message?: unknown }).message;
-          if (typeof bodyMessage === 'string' && bodyMessage.length > 0) {
+          if (typeof bodyMessage === "string" && bodyMessage.length > 0) {
             setErrorNotice(bodyMessage);
           } else {
-            setErrorNotice('Unexpected error from Codex.');
+            setErrorNotice("Unexpected error from Codex.");
           }
         } else {
-          setErrorNotice('Unexpected error from Codex.');
+          setErrorNotice("Unexpected error from Codex.");
         }
       } else {
-        console.error('Failed to send message', error);
-        setErrorNotice('Failed to send message. Check your connection and try again.');
+        console.error("Failed to send message", error);
+        setErrorNotice(
+          "Failed to send message. Check your connection and try again.",
+        );
       }
     } finally {
       setSendingMessage(false);
@@ -1418,7 +1524,7 @@ function App() {
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (!window.confirm('Delete this conversation? This cannot be undone.')) {
+    if (!window.confirm("Delete this conversation? This cannot be undone.")) {
       return;
     }
 
@@ -1432,8 +1538,8 @@ function App() {
         setMessages([]);
       }
     } catch (error) {
-      console.error('Failed to delete session', error);
-      setErrorNotice('Unable to delete the session.');
+      console.error("Failed to delete session", error);
+      setErrorNotice("Unable to delete the session.");
     }
   };
 
@@ -1446,7 +1552,8 @@ function App() {
         <div>
           <h1>Codex Chat Studio</h1>
           <p className="muted">
-            Multi-session workspace backed by the Codex SDK and persistent history
+            Multi-session workspace backed by the Codex SDK and persistent
+            history
           </p>
         </div>
         <div className="header-actions">
@@ -1456,7 +1563,7 @@ function App() {
             onClick={toggleTheme}
             aria-label="Toggle color theme"
           >
-            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            {theme === "dark" ? "Light mode" : "Dark mode"}
           </button>
           <StatusChip status={health.status} lastUpdated={health.lastUpdated} />
         </div>
@@ -1472,7 +1579,7 @@ function App() {
               onClick={() => void handleCreateSession()}
               disabled={creatingSession}
             >
-              {creatingSession ? 'Creating…' : 'New Chat'}
+              {creatingSession ? "Creating…" : "New Chat"}
             </button>
           </div>
 
@@ -1494,13 +1601,15 @@ function App() {
                   <li key={session.id}>
                     <button
                       type="button"
-                      className={`session-item ${isActive ? 'active' : ''}`}
+                      className={`session-item ${isActive ? "active" : ""}`}
                       onClick={() => handleSelectSession(session.id)}
                     >
                       <span className="session-title">{session.title}</span>
                       <div className="session-meta">
                         <span className="session-timestamp">
-                          {sessionDateFormatter.format(new Date(session.updatedAt))}
+                          {sessionDateFormatter.format(
+                            new Date(session.updatedAt),
+                          )}
                         </span>
                         <code className="session-id-badge">{shortId}</code>
                       </div>
@@ -1527,68 +1636,103 @@ function App() {
                 <div className="chat-header-title">
                   <h2>{activeSession.title}</h2>
                   <p className="muted">
-                    Updated {sessionDateFormatter.format(new Date(activeSession.updatedAt))}
+                    Updated{" "}
+                    {sessionDateFormatter.format(
+                      new Date(activeSession.updatedAt),
+                    )}
                   </p>
                 </div>
-                <div className="chat-view-toggle" role="group" aria-label="Chat display mode">
+                <div className="chat-header-tools">
                   <button
                     type="button"
-                    className={`chat-view-toggle-button${
-                      chatViewMode === 'formatted' ? ' active' : ''
-                    }`}
-                    onClick={() => setChatViewMode('formatted')}
-                    aria-pressed={chatViewMode === 'formatted'}
+                    className="ghost-button workspace-button"
+                    onClick={() => {
+                      if (!workspaceInfo) {
+                        void refreshWorkspaceInfo();
+                      }
+                      setWorkspaceModalOpen(true);
+                    }}
+                    aria-label="Change workspace directory"
                   >
-                    Chat Output
+                    Workspace…
                   </button>
-                  <button
-                    type="button"
-                    className={`chat-view-toggle-button${isDetailedView ? ' active' : ''}`}
-                    onClick={() => setChatViewMode('detailed')}
-                    aria-pressed={isDetailedView}
+                  <div
+                    className="chat-view-toggle"
+                    role="group"
+                    aria-label="Chat display mode"
                   >
-                    Detailed Output
-                  </button>
-                  <button
-                    type="button"
-                    className={`chat-view-toggle-button${isRawView ? ' active' : ''}`}
-                    onClick={() => setChatViewMode('raw')}
-                    aria-pressed={isRawView}
-                  >
-                    Raw JSON
-                  </button>
-                  <button
-                    type="button"
-                    className={`chat-view-toggle-button${
-                      isFileEditorView ? ' active' : ''
-                    }`}
-                    onClick={() => setChatViewMode('editor')}
-                    aria-pressed={isFileEditorView}
-                  >
-                    File Editor
-                  </button>
+                    <button
+                      type="button"
+                      className={`chat-view-toggle-button${
+                        chatViewMode === "formatted" ? " active" : ""
+                      }`}
+                      onClick={() => setChatViewMode("formatted")}
+                      aria-pressed={chatViewMode === "formatted"}
+                    >
+                      Chat Output
+                    </button>
+                    <button
+                      type="button"
+                      className={`chat-view-toggle-button${isDetailedView ? " active" : ""}`}
+                      onClick={() => setChatViewMode("detailed")}
+                      aria-pressed={isDetailedView}
+                    >
+                      Detailed Output
+                    </button>
+                    <button
+                      type="button"
+                      className={`chat-view-toggle-button${isRawView ? " active" : ""}`}
+                      onClick={() => setChatViewMode("raw")}
+                      aria-pressed={isRawView}
+                    >
+                      Raw JSON
+                    </button>
+                    <button
+                      type="button"
+                      className={`chat-view-toggle-button${
+                        isFileEditorView ? " active" : ""
+                      }`}
+                      onClick={() => setChatViewMode("editor")}
+                      aria-pressed={isFileEditorView}
+                    >
+                      File Editor
+                    </button>
+                  </div>
                 </div>
               </header>
 
               <div
-                className={`message-panel${isRawView ? ' message-panel-raw' : ''}${
-                  isDetailedView ? ' message-panel-detailed' : ''
-                }${isFileEditorView ? ' message-panel-editor' : ''}`}
+                className={`message-panel${isRawView ? " message-panel-raw" : ""}${
+                  isDetailedView ? " message-panel-detailed" : ""
+                }${isFileEditorView ? " message-panel-editor" : ""}`}
               >
                 {isFileEditorView ? (
-                  <FileEditorPanel key={activeSession.id} sessionId={activeSession.id} />
+                  <FileEditorPanel
+                    key={activeSession.id}
+                    sessionId={activeSession.id}
+                  />
                 ) : isRawView ? (
                   loadingMessages ? (
-                    <div className="message-placeholder">Loading conversation…</div>
+                    <div className="message-placeholder">
+                      Loading conversation…
+                    </div>
                   ) : (
-                    <pre className="message-raw-json" aria-label="Conversation as JSON">
+                    <pre
+                      className="message-raw-json"
+                      aria-label="Conversation as JSON"
+                    >
                       {rawMessagesJson}
                     </pre>
                   )
                 ) : isDetailedView ? (
-                  <div className="message-list message-list-detailed" ref={messageListRef}>
+                  <div
+                    className="message-list message-list-detailed"
+                    ref={messageListRef}
+                  >
                     {loadingMessages ? (
-                      <div className="message-placeholder">Loading conversation…</div>
+                      <div className="message-placeholder">
+                        Loading conversation…
+                      </div>
                     ) : messages.length === 0 ? (
                       <div className="message-placeholder">
                         Send a message to kick off this conversation.
@@ -1600,7 +1744,9 @@ function App() {
                 ) : (
                   <div className="message-list" ref={messageListRef}>
                     {loadingMessages ? (
-                      <div className="message-placeholder">Loading conversation…</div>
+                      <div className="message-placeholder">
+                        Loading conversation…
+                      </div>
                     ) : messages.length === 0 ? (
                       <div className="message-placeholder">
                         Send a message to kick off this conversation.
@@ -1621,7 +1767,9 @@ function App() {
                           <img src={attachment.dataUrl} alt={attachment.name} />
                         </div>
                         <div className="composer-attachment-details">
-                          <span className="composer-attachment-name">{attachment.name}</span>
+                          <span className="composer-attachment-name">
+                            {attachment.name}
+                          </span>
                           <span className="composer-attachment-size">
                             {formatFileSize(attachment.size)}
                           </span>
@@ -1698,7 +1846,8 @@ function App() {
                               : FALLBACK_REASONING
                             ).map((option) => (
                               <option key={option} value={option}>
-                                {option.charAt(0).toUpperCase() + option.slice(1)}
+                                {option.charAt(0).toUpperCase() +
+                                  option.slice(1)}
                               </option>
                             ))}
                           </select>
@@ -1708,16 +1857,20 @@ function App() {
                         ) : null}
                       </>
                     ) : (
-                      <span className="composer-meta-loading">Loading settings…</span>
+                      <span className="composer-meta-loading">
+                        Loading settings…
+                      </span>
                     )}
                   </div>
                   <button type="submit" disabled={isComposerDisabled}>
-                    {sendingMessage ? 'Thinking…' : 'Send'}
+                    {sendingMessage ? "Thinking…" : "Send"}
                   </button>
                 </div>
               </form>
 
-              {errorNotice ? <div className="error-banner">{errorNotice}</div> : null}
+              {errorNotice ? (
+                <div className="error-banner">{errorNotice}</div>
+              ) : null}
             </>
           ) : (
             <div className="empty-chat">
@@ -1755,6 +1908,16 @@ function App() {
           </div>
         </div>
       ) : null}
+
+      <WorkspaceRootModal
+        open={workspaceModalOpen}
+        workspaceInfo={workspaceInfo}
+        onClose={() => setWorkspaceModalOpen(false)}
+        onRootUpdated={(info) => {
+          setWorkspaceInfo(info);
+          void refreshWorkspaceInfo();
+        }}
+      />
     </div>
   );
 }

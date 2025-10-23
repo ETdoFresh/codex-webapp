@@ -1,8 +1,13 @@
 :root {
-  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   line-height: 1.6;
   color-scheme: light;
-  --color-body-bg: radial-gradient(circle at top, #f1f5f9, #e2e8f0 55%, #cbd5f5 100%);
+  --color-body-bg: radial-gradient(
+    circle at top,
+    #f1f5f9,
+    #e2e8f0 55%,
+    #cbd5f5 100%
+  );
   --color-text-primary: #0f172a;
   --color-text-muted: #475569;
   --color-header-bg: rgba(248, 250, 252, 0.95);
@@ -67,9 +72,14 @@
   --color-toggle-bg-hover: rgba(59, 130, 246, 0.12);
 }
 
-[data-theme='dark'] {
+[data-theme="dark"] {
   color-scheme: dark;
-  --color-body-bg: radial-gradient(circle at top, #0f172a, #020617 55%, #000814 100%);
+  --color-body-bg: radial-gradient(
+    circle at top,
+    #0f172a,
+    #020617 55%,
+    #000814 100%
+  );
   --color-text-primary: #e2e8f0;
   --color-text-muted: #94a3b8;
   --color-header-bg: rgba(15, 23, 42, 0.85);
@@ -147,7 +157,9 @@ body {
   margin: 0;
   background: var(--color-body-bg);
   color: var(--color-text-primary);
-  transition: background 0.3s ease, color 0.3s ease;
+  transition:
+    background 0.3s ease,
+    color 0.3s ease;
 }
 
 button,
@@ -200,7 +212,10 @@ textarea {
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .theme-toggle:hover {
@@ -262,7 +277,9 @@ textarea {
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease;
 }
 
 .ghost-button:hover:not(:disabled) {
@@ -312,7 +329,10 @@ textarea {
   display: grid;
   gap: 0.3rem;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
   color: var(--color-session-muted-text);
   font-weight: 500;
 }
@@ -350,8 +370,9 @@ textarea {
 }
 
 .session-item .session-id-badge {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Fira Mono', ui-monospace, SFMono-Regular,
-    Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-family:
+    "JetBrains Mono", "Fira Code", "Fira Mono", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.7rem;
   letter-spacing: 0.04em;
   background: var(--color-session-badge-bg);
@@ -377,7 +398,9 @@ textarea {
   font-size: 1.3rem;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
 }
 
 .session-delete:hover {
@@ -409,6 +432,20 @@ textarea {
   min-width: 0;
 }
 
+.chat-header-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.workspace-button {
+  font-weight: 600;
+  padding: 0.45rem 1.15rem;
+}
+
 .chat-view-toggle {
   display: inline-flex;
   align-items: center;
@@ -417,7 +454,6 @@ textarea {
   border: 1px solid var(--color-toggle-border);
   border-radius: 999px;
   background: transparent;
-  margin-left: auto;
 }
 
 .chat-view-toggle-button {
@@ -429,7 +465,10 @@ textarea {
   font-weight: 600;
   color: var(--color-toggle-text);
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .chat-view-toggle-button:hover {
@@ -510,7 +549,8 @@ textarea {
 .message-raw-json {
   flex: 1;
   margin: 0;
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.85rem;
   line-height: 1.5;
   color: var(--color-text-primary);
@@ -542,7 +582,7 @@ textarea {
   scrollbar-width: thin;
 }
 
-[data-theme='dark'] .file-editor-sidebar {
+[data-theme="dark"] .file-editor-sidebar {
   background: rgba(15, 23, 42, 0.4);
 }
 
@@ -597,7 +637,10 @@ textarea {
   background: transparent;
   color: var(--color-text-primary);
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease,
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
     transform 0.2s ease;
 }
 
@@ -712,13 +755,14 @@ textarea {
   padding: 1rem 1.1rem;
   background: rgba(255, 255, 255, 0.05);
   color: var(--color-text-primary);
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.9rem;
   line-height: 1.5;
   box-shadow: var(--shadow-message-inset);
 }
 
-[data-theme='dark'] .file-editor-textarea {
+[data-theme="dark"] .file-editor-textarea {
   background: rgba(15, 23, 42, 0.5);
 }
 
@@ -771,7 +815,10 @@ textarea {
   font-size: 0.85rem;
   color: inherit;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .message-reasoning-summary.static {
@@ -895,7 +942,8 @@ textarea {
 }
 
 .message-reasoning-detail-text pre {
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.82rem;
   line-height: 1.6;
   background: rgba(15, 23, 42, 0.07);
@@ -905,32 +953,34 @@ textarea {
 }
 
 .message-reasoning-detail-text code {
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.82rem;
   background: rgba(15, 23, 42, 0.08);
   padding: 0.1rem 0.35rem;
   border-radius: 0.35rem;
 }
 
-[data-theme='dark'] .message-reasoning-detail-text {
+[data-theme="dark"] .message-reasoning-detail-text {
   background: rgba(148, 163, 184, 0.12);
 }
 
-[data-theme='dark'] .message-reasoning-detail-text pre {
+[data-theme="dark"] .message-reasoning-detail-text pre {
   background: rgba(148, 163, 184, 0.18);
 }
 
-[data-theme='dark'] .message-reasoning-detail-text code {
+[data-theme="dark"] .message-reasoning-detail-text code {
   background: rgba(148, 163, 184, 0.24);
 }
 
 .message-reasoning-detail-json {
   background: rgba(15, 23, 42, 0.06);
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.82rem;
 }
 
-[data-theme='dark'] .message-reasoning-detail-json {
+[data-theme="dark"] .message-reasoning-detail-json {
   background: rgba(148, 163, 184, 0.16);
 }
 
@@ -1036,7 +1086,8 @@ textarea {
 }
 
 .message-item-inline-code {
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.85rem;
   background: var(--color-neutral-bg);
   border: 1px solid var(--color-neutral-border);
@@ -1052,7 +1103,8 @@ textarea {
 }
 
 .message-item-diff-line {
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.85rem;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1086,7 +1138,7 @@ textarea {
 }
 
 .message-item-details summary::before {
-  content: '▸';
+  content: "▸";
   font-size: 0.75rem;
   transform: translateY(1px);
   transition: transform 0.2s ease;
@@ -1094,7 +1146,7 @@ textarea {
 }
 
 .message-item-details[open] summary::before {
-  content: '▾';
+  content: "▾";
 }
 
 .message-item-details summary:hover,
@@ -1116,7 +1168,8 @@ textarea {
   background: var(--color-neutral-bg);
   border: 1px solid var(--color-neutral-border);
   border-radius: 0.6rem;
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.85rem;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1248,7 +1301,8 @@ textarea {
 }
 
 .message-content pre {
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.85rem;
   line-height: 1.6;
   background: rgba(15, 23, 42, 0.08);
@@ -1263,7 +1317,8 @@ textarea {
 }
 
 .message-content code {
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.85rem;
   background: rgba(15, 23, 42, 0.08);
   padding: 0.15rem 0.4rem;
@@ -1275,11 +1330,11 @@ textarea {
   opacity: 0.7;
 }
 
-[data-theme='dark'] .message-content pre {
+[data-theme="dark"] .message-content pre {
   background: rgba(148, 163, 184, 0.18);
 }
 
-[data-theme='dark'] .message-content code {
+[data-theme="dark"] .message-content code {
   background: rgba(148, 163, 184, 0.26);
 }
 
@@ -1303,7 +1358,10 @@ textarea {
   line-height: 1.5;
   background: rgba(255, 255, 255, 0.05);
   color: var(--color-composer-text);
-  transition: border 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition:
+    border 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
 .composer textarea:focus {
@@ -1355,7 +1413,11 @@ textarea {
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
 }
 
 .composer-meta select:focus {
@@ -1374,7 +1436,7 @@ textarea {
   color: #111827;
 }
 
-[data-theme='dark'] .composer-meta select option {
+[data-theme="dark"] .composer-meta select option {
   color: #f1f5f9;
   background: rgba(15, 23, 42, 0.95);
 }
@@ -1391,7 +1453,7 @@ textarea {
   letter-spacing: 0.04em;
 }
 
-.composer-footer button[type='submit'] {
+.composer-footer button[type="submit"] {
   background: var(--color-button-primary-bg);
   color: var(--color-button-primary-text);
   border: none;
@@ -1400,16 +1462,18 @@ textarea {
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
   box-shadow: var(--shadow-button-primary);
 }
 
-.composer-footer button[type='submit']:hover:not(:disabled) {
+.composer-footer button[type="submit"]:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: var(--shadow-button-primary-hover);
 }
 
-.composer-footer button[type='submit']:disabled {
+.composer-footer button[type="submit"]:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -1429,7 +1493,10 @@ textarea {
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .attachment-button:hover:not(:disabled) {
@@ -1499,7 +1566,9 @@ textarea {
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
 }
 
 .composer-attachment-remove:hover {
@@ -1535,7 +1604,9 @@ textarea {
   padding: 0;
   background: rgba(148, 163, 184, 0.18);
   cursor: zoom-in;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .message-attachment-image:focus-visible {
@@ -1662,7 +1733,9 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
 }
 
 .image-modal-close:hover {
@@ -1683,6 +1756,378 @@ textarea {
   word-break: break-word;
 }
 
+.workspace-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  z-index: 1100;
+}
+
+.workspace-modal {
+  width: min(880px, 94vw);
+  max-height: min(90vh, 720px);
+  background: var(--color-panel-bg);
+  border-radius: 1.25rem;
+  border: 1px solid var(--color-message-border);
+  box-shadow: var(--shadow-panel);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.5rem 1.75rem 1.25rem;
+  border-bottom: 1px solid var(--color-message-border);
+}
+
+.workspace-modal-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.workspace-modal-subtitle {
+  margin: 0.35rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  max-width: clamp(200px, 48vw, 520px);
+  word-break: break-word;
+}
+
+.workspace-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 0.75rem;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.workspace-modal-close:hover {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--color-button-primary-text);
+  transform: scale(1.05);
+}
+
+.workspace-modal-close:focus-visible {
+  outline: 2px solid var(--color-toggle-bg-hover);
+  outline-offset: 2px;
+}
+
+.workspace-modal-search {
+  padding: 1rem 1.75rem;
+  border-bottom: 1px solid var(--color-message-border);
+  display: grid;
+  gap: 0.65rem;
+}
+
+.workspace-modal-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text-primary);
+}
+
+.workspace-modal-search-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.workspace-modal-search-row input {
+  flex: 1;
+  border-radius: 0.9rem;
+  border: 1px solid var(--color-textarea-border);
+  padding: 0.65rem 0.9rem;
+  font-size: 0.95rem;
+  background: var(--color-select-bg);
+  color: var(--color-text-primary);
+}
+
+.workspace-modal-search-row input:focus-visible {
+  outline: 2px solid var(--color-textarea-focus-border);
+  outline-offset: 2px;
+}
+
+.workspace-modal-body {
+  display: flex;
+  gap: 1.5rem;
+  padding: 1.5rem 1.75rem 1.25rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.workspace-modal-quick-access {
+  width: clamp(180px, 22vw, 240px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.workspace-modal-quick-access h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.workspace-modal-quick-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.workspace-modal-muted {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.workspace-modal-quick-button {
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  padding: 0.4rem 0.65rem;
+  color: var(--color-text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+  word-break: break-word;
+}
+
+.workspace-modal-quick-button:hover {
+  background: var(--color-toggle-bg-hover);
+  border-color: var(--color-toggle-border);
+  transform: translateY(-1px);
+}
+
+.workspace-modal-directory {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.workspace-modal-pathbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.workspace-modal-path {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.75rem;
+  background: var(--color-placeholder-bg);
+  border-radius: 0.85rem;
+  border: 1px solid var(--color-placeholder-border);
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+  word-break: break-all;
+}
+
+.workspace-modal-up {
+  background: transparent;
+  border: 1px solid var(--color-toggle-border);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--color-toggle-text);
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.workspace-modal-up:hover:not(:disabled) {
+  background: var(--color-toggle-bg-hover);
+  transform: translateY(-1px);
+}
+
+.workspace-modal-up:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.workspace-modal-error {
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  color: var(--color-error-text);
+  font-size: 0.9rem;
+}
+
+.workspace-modal-warning {
+  border-radius: 0.85rem;
+  padding: 0.65rem 0.85rem;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: var(--color-toggle-text);
+  font-size: 0.9rem;
+}
+
+.workspace-modal-loading,
+.workspace-modal-empty {
+  border-radius: 0.85rem;
+  padding: 1.25rem;
+  background: var(--color-placeholder-bg);
+  border: 1px dashed var(--color-placeholder-border);
+  color: var(--color-text-muted);
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.workspace-modal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid var(--color-placeholder-border);
+  border-radius: 0.85rem;
+  background: var(--color-select-bg);
+  display: grid;
+  gap: 0;
+}
+
+.workspace-modal-list li:not(:last-child) {
+  border-bottom: 1px solid var(--color-placeholder-border);
+}
+
+.workspace-modal-list button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  transition: background 0.2s ease;
+}
+
+.workspace-modal-list button:hover {
+  background: var(--color-toggle-bg-hover);
+}
+
+.workspace-modal-footer {
+  padding: 1.1rem 1.75rem 1.5rem;
+  border-top: 1px solid var(--color-message-border);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.workspace-modal-note {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  background: var(--color-notice-info-bg);
+  border: 1px solid var(--color-notice-info-border);
+  border-radius: 0.85rem;
+  padding: 0.6rem 0.85rem;
+}
+
+.workspace-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.workspace-modal-confirm {
+  background: var(--color-button-primary-bg);
+  color: var(--color-button-primary-text);
+  border: none;
+  border-radius: 999px;
+  padding: 0.55rem 1.4rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-button-primary);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.workspace-modal-confirm:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+.workspace-modal-confirm:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-button-primary-hover);
+}
+
+.workspace-modal-note code,
+.workspace-modal-path {
+  font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+}
+
+@media (max-width: 900px) {
+  .workspace-modal-body {
+    flex-direction: column;
+  }
+
+  .workspace-modal-quick-access {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .workspace-modal-quick-list {
+    grid-template-columns: repeat(auto-fit, minmax(40%, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace-modal {
+    max-height: 95vh;
+  }
+
+  .workspace-modal-body {
+    padding: 1.25rem;
+  }
+
+  .workspace-modal-search {
+    padding: 1rem 1.25rem;
+  }
+
+  .workspace-modal-footer {
+    padding: 1rem 1.25rem 1.25rem;
+  }
+
+  .workspace-modal-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .workspace-modal-confirm,
+  .workspace-modal-actions .ghost-button {
+    width: 100%;
+    text-align: center;
+  }
+}
+
 .empty-chat {
   margin: auto;
   text-align: center;
@@ -1700,7 +2145,9 @@ textarea {
   padding: 0.6rem 1.6rem;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
   box-shadow: var(--shadow-button-primary);
 }
 
