@@ -137,16 +137,71 @@ const bundledCodexCandidates = (): string[] => {
     pushCandidate(preferred);
   }
 
+  const archTokens = (() => {
+    switch (process.arch) {
+      case 'x64':
+        return ['x86_64', 'amd64', 'x64'];
+      case 'arm64':
+        return ['aarch64', 'arm64'];
+      case 'arm':
+        return ['arm'];
+      default:
+        return [process.arch];
+    }
+  })();
+
+  const platformTokens = (() => {
+    switch (process.platform) {
+      case 'linux':
+        return ['linux'];
+      case 'darwin':
+        return ['darwin', 'apple', 'mac'];
+      case 'win32':
+        return ['windows', 'msvc'];
+      default:
+        return [process.platform];
+    }
+  })();
+
+  const libcPreference = (() => {
+    if (process.platform === 'linux') {
+      return ['gnu', 'musl'];
+    }
+    return [];
+  })();
+
+  const computeScore = (name: string): number => {
+    const normalized = name.toLowerCase();
+    let score = 0;
+    if (archTokens.some((token) => normalized.includes(token))) {
+      score += 100;
+    }
+    if (platformTokens.some((token) => normalized.includes(token))) {
+      score += 10;
+    }
+    libcPreference.forEach((token, index) => {
+      if (normalized.includes(token)) {
+        score += libcPreference.length - index;
+      }
+    });
+    return score;
+  };
+
   try {
-    const entries = fsSync.readdirSync(codexVendorRoot, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-      const name = entry.name;
-      if (preferred && name === preferred) {
-        continue;
-      }
+    const entries = fsSync
+      .readdirSync(codexVendorRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) => !(preferred && name === preferred))
+      .sort((a, b) => {
+        const scoreDelta = computeScore(b) - computeScore(a);
+        if (scoreDelta !== 0) {
+          return scoreDelta;
+        }
+        return a.localeCompare(b);
+      });
+
+    for (const name of entries) {
       pushCandidate(name);
     }
   } catch {
