@@ -10,6 +10,7 @@ import {
   useState
 } from 'react';
 import StatusChip from './components/StatusChip';
+import FileEditorPanel from './components/FileEditorPanel';
 import { useHealthStatus } from './hooks/useHealthStatus';
 import {
   ApiError,
@@ -193,7 +194,9 @@ function App() {
   const [updatingMeta, setUpdatingMeta] = useState(false);
   const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
   const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
-  const [chatViewMode, setChatViewMode] = useState<'formatted' | 'detailed' | 'raw'>('formatted');
+  const [chatViewMode, setChatViewMode] = useState<'formatted' | 'detailed' | 'raw' | 'editor'>(
+    'formatted'
+  );
   const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(new Set());
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -218,6 +221,7 @@ function App() {
   const rawMessagesJson = useMemo(() => JSON.stringify(messages, null, 2), [messages]);
   const isRawView = chatViewMode === 'raw';
   const isDetailedView = chatViewMode === 'detailed';
+  const isFileEditorView = chatViewMode === 'editor';
   const markdownPlugins = useMemo(() => [remarkGfm], []);
   const inlineMarkdownComponents = useMemo<Components>(
     () => ({
@@ -1553,15 +1557,27 @@ function App() {
                   >
                     Raw JSON
                   </button>
+                  <button
+                    type="button"
+                    className={`chat-view-toggle-button${
+                      isFileEditorView ? ' active' : ''
+                    }`}
+                    onClick={() => setChatViewMode('editor')}
+                    aria-pressed={isFileEditorView}
+                  >
+                    File Editor
+                  </button>
                 </div>
               </header>
 
               <div
                 className={`message-panel${isRawView ? ' message-panel-raw' : ''}${
                   isDetailedView ? ' message-panel-detailed' : ''
-                }`}
+                }${isFileEditorView ? ' message-panel-editor' : ''}`}
               >
-                {isRawView ? (
+                {isFileEditorView ? (
+                  <FileEditorPanel key={activeSession.id} sessionId={activeSession.id} />
+                ) : isRawView ? (
                   loadingMessages ? (
                     <div className="message-placeholder">Loading conversation…</div>
                   ) : (

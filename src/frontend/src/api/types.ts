@@ -102,3 +102,21 @@ export type AttachmentUpload = {
   size: number;
   base64: string;
 };
+
+export type WorkspaceFile = {
+  path: string;
+  size: number;
+  updatedAt: string;
+};
+
+export type WorkspaceFileContent = WorkspaceFile & {
+  content: string;
+};
+
+export type ListWorkspaceFilesResponse = {
+  files: WorkspaceFile[];
+};
+
+export type WorkspaceFileContentResponse = {
+  file: WorkspaceFileContent;
+};

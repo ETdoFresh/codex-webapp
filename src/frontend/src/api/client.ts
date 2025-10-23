@@ -8,7 +8,11 @@ import type {
   PostMessageErrorResponse,
   PostMessageSuccessResponse,
   PostMessageStreamEvent,
-  Session
+  Session,
+  ListWorkspaceFilesResponse,
+  WorkspaceFile,
+  WorkspaceFileContent,
+  WorkspaceFileContentResponse
 } from './types';
 
 export class ApiError<T = unknown> extends Error {
@@ -285,4 +289,35 @@ export async function safePostMessage(
     }
     throw error;
   }
+}
+
+export async function fetchWorkspaceFiles(sessionId: string): Promise<WorkspaceFile[]> {
+  const data = await request<ListWorkspaceFilesResponse>(`/api/sessions/${sessionId}/files`);
+  return data.files;
+}
+
+export async function fetchWorkspaceFileContent(
+  sessionId: string,
+  filePath: string
+): Promise<WorkspaceFileContent> {
+  const params = new URLSearchParams({ path: filePath });
+  const data = await request<WorkspaceFileContentResponse>(
+    `/api/sessions/${sessionId}/files/content?${params.toString()}`
+  );
+  return data.file;
+}
+
+export async function saveWorkspaceFile(
+  sessionId: string,
+  payload: { path: string; content: string }
+): Promise<WorkspaceFileContent> {
+  const data = await request<WorkspaceFileContentResponse>(
+    `/api/sessions/${sessionId}/files/content`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    }
+  );
+
+  return data.file;
 }

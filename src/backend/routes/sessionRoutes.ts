@@ -7,10 +7,119 @@ import { codexManager } from '../codexManager';
 import asyncHandler from '../middleware/asyncHandler';
 import { DEFAULT_SESSION_TITLE } from '../config/sessions';
 import { handleSessionMessageRequest } from '../services/sessionMessageService';
-import { getWorkspaceRoot } from '../workspaces';
+import { ensureWorkspaceDirectory, getWorkspaceDirectory, getWorkspaceRoot } from '../workspaces';
 import { messageToResponse, toSessionResponse } from '../types/api';
 
 const router = Router();
+
+const MAX_WORKSPACE_FILE_COUNT = 2000;
+const MAX_WORKSPACE_FILE_SIZE_BYTES = 512 * 1024; // 512 KB
+const IGNORED_WORKSPACE_DIRECTORIES = new Set(['.git', 'node_modules']);
+
+type WorkspaceFileDescriptor = {
+  path: string;
+  size: number;
+  updatedAt: string;
+};
+
+const toPosixPath = (value: string): string => value.split(path.sep).join('/');
+
+const normalizeWorkspaceRelativePath = (input: string): string => {
+  const sanitized = input.replace(/\\/g, '/').replace(/^\//, '').trim();
+  if (sanitized.length === 0) {
+    throw new Error('Path is required.');
+  }
+
+  const normalized = path.posix.normalize(sanitized);
+  if (
+    normalized === '' ||
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith('../')
+  ) {
+    throw new Error('Path must stay within the workspace.');
+  }
+
+  return normalized;
+};
+
+const resolveWorkspacePath = (workspaceDirectory: string, relativePath: string) => {
+  const normalizedRelative = normalizeWorkspaceRelativePath(relativePath);
+  const absoluteCandidate = path.resolve(
+    workspaceDirectory,
+    normalizedRelative.split('/').join(path.sep)
+  );
+
+  const derivedRelative = path.relative(workspaceDirectory, absoluteCandidate);
+  if (
+    derivedRelative.startsWith('..') ||
+    path.isAbsolute(derivedRelative) ||
+    derivedRelative === ''
+  ) {
+    throw new Error('Path must remain inside the workspace.');
+  }
+
+  return {
+    absolutePath: absoluteCandidate,
+    relativePath: normalizedRelative
+  };
+};
+
+const listWorkspaceFiles = (workspaceDirectory: string): WorkspaceFileDescriptor[] => {
+  if (!fs.existsSync(workspaceDirectory)) {
+    return [];
+  }
+
+  const files: WorkspaceFileDescriptor[] = [];
+  const queue: string[] = [workspaceDirectory];
+
+  while (queue.length > 0) {
+    const current = queue.pop();
+    if (!current) {
+      continue;
+    }
+
+    const entries = fs.readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === '.' || entry.name === '..') {
+        continue;
+      }
+
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
+
+      const absoluteEntryPath = path.join(current, entry.name);
+      const relativeEntryPath = path.relative(workspaceDirectory, absoluteEntryPath);
+
+      if (entry.isDirectory()) {
+        if (IGNORED_WORKSPACE_DIRECTORIES.has(entry.name)) {
+          continue;
+        }
+        queue.push(absoluteEntryPath);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const stats = fs.statSync(absoluteEntryPath);
+
+      files.push({
+        path: toPosixPath(relativeEntryPath),
+        size: stats.size,
+        updatedAt: stats.mtime.toISOString()
+      });
+
+      if (files.length >= MAX_WORKSPACE_FILE_COUNT) {
+        return files.sort((a, b) => a.path.localeCompare(b.path));
+      }
+    }
+  }
+
+  return files.sort((a, b) => a.path.localeCompare(b.path));
+};
 
 const titleSchema = z
   .string()
@@ -26,6 +135,23 @@ const optionalTitleSchema = z
 
 const updateTitleSchema = z.object({
   title: titleSchema.optional()
+});
+
+const filePathQuerySchema = z.object({
+  path: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+});
+
+const fileWriteSchema = z.object({
+  path: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500),
+  content: z.string()
 });
 
 const findSessionOr404 = (sessionId: string, res: Response) => {
@@ -131,6 +257,148 @@ router.post(
     }
 
     await handleSessionMessageRequest(req, res, session);
+  })
+);
+
+router.get(
+  '/api/sessions/:id/files',
+  asyncHandler(async (req, res) => {
+    const session = findSessionOr404(req.params.id, res);
+    if (!session) {
+      return;
+    }
+
+    const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+    const files = listWorkspaceFiles(workspaceDirectory);
+    res.json({ files });
+  })
+);
+
+router.get(
+  '/api/sessions/:id/files/content',
+  asyncHandler(async (req, res) => {
+    const session = findSessionOr404(req.params.id, res);
+    if (!session) {
+      return;
+    }
+
+    const parsed = filePathQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid file path.' });
+      return;
+    }
+
+    const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+    let resolved: { absolutePath: string; relativePath: string };
+    try {
+      resolved = resolveWorkspacePath(workspaceDirectory, parsed.data.path);
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Invalid file path.'
+      });
+      return;
+    }
+
+    if (!fs.existsSync(resolved.absolutePath)) {
+      res.status(404).json({ error: 'File not found.' });
+      return;
+    }
+
+    const stats = fs.statSync(resolved.absolutePath);
+    if (!stats.isFile()) {
+      res.status(400).json({ error: 'Requested path is not a file.' });
+      return;
+    }
+
+    if (stats.size > MAX_WORKSPACE_FILE_SIZE_BYTES) {
+      res.status(413).json({
+        error: 'File exceeds size limit for editor.',
+        maxBytes: MAX_WORKSPACE_FILE_SIZE_BYTES
+      });
+      return;
+    }
+
+    const buffer = fs.readFileSync(resolved.absolutePath);
+    if (buffer.includes(0)) {
+      res.status(415).json({
+        error: 'File appears to be binary and cannot be displayed.'
+      });
+      return;
+    }
+
+    res.json({
+      file: {
+        path: resolved.relativePath,
+        size: stats.size,
+        updatedAt: stats.mtime.toISOString(),
+        content: buffer.toString('utf8')
+      }
+    });
+  })
+);
+
+router.put(
+  '/api/sessions/:id/files/content',
+  asyncHandler(async (req, res) => {
+    const session = findSessionOr404(req.params.id, res);
+    if (!session) {
+      return;
+    }
+
+    const parsed = fileWriteSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid request body.' });
+      return;
+    }
+
+    const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+    let resolved: { absolutePath: string; relativePath: string };
+    try {
+      resolved = resolveWorkspacePath(workspaceDirectory, parsed.data.path);
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Invalid file path.'
+      });
+      return;
+    }
+
+    const contentBytes = Buffer.byteLength(parsed.data.content, 'utf8');
+    if (contentBytes > MAX_WORKSPACE_FILE_SIZE_BYTES) {
+      res.status(413).json({
+        error: 'File exceeds size limit for editor.',
+        maxBytes: MAX_WORKSPACE_FILE_SIZE_BYTES
+      });
+      return;
+    }
+
+    fs.mkdirSync(path.dirname(resolved.absolutePath), { recursive: true });
+
+    try {
+      fs.writeFileSync(resolved.absolutePath, parsed.data.content, 'utf8');
+    } catch (error) {
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? `Unable to write file: ${error.message}`
+            : 'Unable to write file.'
+      });
+      return;
+    }
+
+    const stats = fs.statSync(resolved.absolutePath);
+    if (!stats.isFile()) {
+      res.status(400).json({ error: 'Requested path is not a file.' });
+      return;
+    }
+
+    res.json({
+      file: {
+        path: resolved.relativePath,
+        size: stats.size,
+        updatedAt: stats.mtime.toISOString(),
+        content: parsed.data.content
+      }
+    });
   })
 );
 
