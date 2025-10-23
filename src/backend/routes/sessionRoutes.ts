@@ -14,7 +14,7 @@ const router = Router();
 
 const MAX_WORKSPACE_FILE_COUNT = 2000;
 const MAX_WORKSPACE_FILE_SIZE_BYTES = 512 * 1024; // 512 KB
-const IGNORED_WORKSPACE_DIRECTORIES = new Set(['.git', 'node_modules']);
+const IGNORED_WORKSPACE_DIRECTORIES = new Set(['.git', '.codex', 'node_modules']);
 
 type WorkspaceFileDescriptor = {
   path: string;

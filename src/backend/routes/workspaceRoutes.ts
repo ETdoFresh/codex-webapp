@@ -141,6 +141,7 @@ router.post(
       }
     });
 
+    database.resetAllSessionThreads();
     codexManager.clearThreadCache();
 
     res.json({

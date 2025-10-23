@@ -441,6 +441,39 @@ textarea {
   flex-wrap: wrap;
 }
 
+.workspace-header-summary {
+  max-width: clamp(240px, 30vw, 420px);
+}
+
+.workspace-current {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  max-width: clamp(200px, 30vw, 360px);
+  overflow: hidden;
+  flex: 1 0 auto;
+}
+
+.workspace-current-label {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.workspace-current code {
+  display: inline-block;
+  max-width: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--color-placeholder-bg);
+  border: 1px solid var(--color-placeholder-border);
+  border-radius: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  color: var(--color-text-primary);
+}
+
 .workspace-button {
   font-weight: 600;
   padding: 0.45rem 1.15rem;

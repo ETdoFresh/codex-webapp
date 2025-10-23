@@ -1,19 +1,19 @@
-import Database, { type Statement } from 'better-sqlite3';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { v4 as uuid } from 'uuid';
-import type { ThreadItem } from '@openai/codex-sdk';
-import type IDatabase from './interfaces/IDatabase';
-import type IWorkspace from './interfaces/IWorkspace';
-import { workspaceManager, getWorkspaceRoot } from './workspaces';
+import Database, { type Statement } from "better-sqlite3";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { v4 as uuid } from "uuid";
+import type { ThreadItem } from "@openai/codex-sdk";
+import type IDatabase from "./interfaces/IDatabase";
+import type IWorkspace from "./interfaces/IWorkspace";
+import { workspaceManager, getWorkspaceRoot } from "./workspaces";
 import type {
   AttachmentRecord,
   MessageRecord,
   MessageWithAttachments,
   NewAttachmentInput,
-  SessionRecord
-} from './types/database';
+  SessionRecord,
+} from "./types/database";
 
 type RunItemRow = {
   id: string;
@@ -25,8 +25,8 @@ type RunItemRow = {
 };
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(dirname, '../..');
-const defaultDataDir = path.join(projectRoot, 'var');
+const projectRoot = path.resolve(dirname, "../..");
+const defaultDataDir = path.join(projectRoot, "var");
 const dataDir = process.env.BACKEND_DATA_DIR
   ? path.resolve(process.env.BACKEND_DATA_DIR)
   : defaultDataDir;
@@ -34,7 +34,7 @@ const dataDir = process.env.BACKEND_DATA_DIR
 fs.mkdirSync(dataDir, { recursive: true });
 fs.mkdirSync(getWorkspaceRoot(), { recursive: true });
 
-const databasePath = path.join(dataDir, 'chat.db');
+const databasePath = path.join(dataDir, "chat.db");
 
 const migrations: string[] = [
   `
@@ -101,7 +101,7 @@ const migrations: string[] = [
   `
   CREATE INDEX IF NOT EXISTS idx_message_run_items_session
     ON message_run_items(session_id)
-`
+`,
 ];
 
 class SQLiteDatabase implements IDatabase {
@@ -151,11 +151,27 @@ class SQLiteDatabase implements IDatabase {
     payload: string;
     createdAt: string;
   }>;
-  private readonly listAttachmentsForMessageStmt: Statement<{ messageId: string }, AttachmentRecord>;
-  private readonly listRunItemsForMessageStmt: Statement<{ messageId: string }, RunItemRow>;
-  private readonly getAttachmentStmt: Statement<{ id: string }, AttachmentRecord>;
-  private readonly touchSessionStmt: Statement<{ id: string; updatedAt: string }>;
-  private readonly listMessagesStmt: Statement<{ sessionId: string }, MessageRecord>;
+  private readonly listAttachmentsForMessageStmt: Statement<
+    { messageId: string },
+    AttachmentRecord
+  >;
+  private readonly listRunItemsForMessageStmt: Statement<
+    { messageId: string },
+    RunItemRow
+  >;
+  private readonly getAttachmentStmt: Statement<
+    { id: string },
+    AttachmentRecord
+  >;
+  private readonly touchSessionStmt: Statement<{
+    id: string;
+    updatedAt: string;
+  }>;
+  private readonly listMessagesStmt: Statement<
+    { sessionId: string },
+    MessageRecord
+  >;
+  private readonly resetAllThreadsStmt: Statement;
 
   constructor(private readonly workspace: IWorkspace) {
     this.db = new Database(databasePath);
@@ -186,6 +202,10 @@ class SQLiteDatabase implements IDatabase {
       SET codex_thread_id = @codexThreadId,
           updated_at = @updatedAt
       WHERE id = @id
+    `);
+    this.resetAllThreadsStmt = this.db.prepare(`
+      UPDATE sessions
+      SET codex_thread_id = NULL
     `);
     this.deleteSessionStmt = this.db.prepare(`
       DELETE FROM sessions WHERE id = @id
@@ -297,7 +317,7 @@ class SQLiteDatabase implements IDatabase {
       title,
       codexThreadId: null,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
 
     this.insertSessionStmt.run({
@@ -305,7 +325,7 @@ class SQLiteDatabase implements IDatabase {
       title: record.title,
       codexThreadId: record.codexThreadId,
       createdAt: record.createdAt,
-      updatedAt: record.updatedAt
+      updatedAt: record.updatedAt,
     });
 
     this.workspace.ensureWorkspaceDirectory(record.id);
@@ -332,7 +352,10 @@ class SQLiteDatabase implements IDatabase {
     return { ...existing, title, updatedAt };
   }
 
-  updateSessionThreadId(id: string, codexThreadId: string | null): SessionRecord | null {
+  updateSessionThreadId(
+    id: string,
+    codexThreadId: string | null,
+  ): SessionRecord | null {
     const existing = this.getSession(id);
     if (!existing) {
       return null;
@@ -341,6 +364,10 @@ class SQLiteDatabase implements IDatabase {
     const updatedAt = new Date().toISOString();
     this.updateSessionThreadStmt.run({ id, codexThreadId, updatedAt });
     return { ...existing, codexThreadId, updatedAt };
+  }
+
+  resetAllSessionThreads(): void {
+    this.resetAllThreadsStmt.run();
   }
 
   deleteSession(id: string): boolean {
@@ -354,10 +381,10 @@ class SQLiteDatabase implements IDatabase {
 
   addMessage(
     sessionId: string,
-    role: MessageRecord['role'],
+    role: MessageRecord["role"],
     content: string,
     attachments: NewAttachmentInput[] = [],
-    items: ThreadItem[] = []
+    items: ThreadItem[] = [],
   ): MessageWithAttachments {
     const createdAt = new Date().toISOString();
     const message: MessageRecord = {
@@ -365,7 +392,7 @@ class SQLiteDatabase implements IDatabase {
       sessionId,
       role,
       content,
-      createdAt
+      createdAt,
     };
 
     this.insertMessageStmt.run({
@@ -373,7 +400,7 @@ class SQLiteDatabase implements IDatabase {
       sessionId: message.sessionId,
       role: message.role,
       content: message.content,
-      createdAt: message.createdAt
+      createdAt: message.createdAt,
     });
 
     const savedAttachments: AttachmentRecord[] = [];
@@ -388,7 +415,7 @@ class SQLiteDatabase implements IDatabase {
         mimeType: attachment.mimeType,
         size: attachment.size,
         relativePath: attachment.relativePath,
-        createdAt
+        createdAt,
       };
 
       this.insertAttachmentStmt.run({
@@ -399,7 +426,7 @@ class SQLiteDatabase implements IDatabase {
         mimeType: record.mimeType,
         size: record.size,
         relativePath: record.relativePath,
-        createdAt: record.createdAt
+        createdAt: record.createdAt,
       });
 
       savedAttachments.push(record);
@@ -414,7 +441,7 @@ class SQLiteDatabase implements IDatabase {
         sessionId,
         idx: index,
         payload,
-        createdAt
+        createdAt,
       });
       try {
         savedItems.push(JSON.parse(payload) as ThreadItem);
@@ -429,14 +456,17 @@ class SQLiteDatabase implements IDatabase {
   }
 
   listMessages(sessionId: string): MessageWithAttachments[] {
-    const baseMessages = this.listMessagesStmt.all({ sessionId }) as MessageRecord[];
+    const baseMessages = this.listMessagesStmt.all({
+      sessionId,
+    }) as MessageRecord[];
     return baseMessages.map((message) => ({
       ...message,
-      attachments: this.listAttachmentsForMessageStmt.all({ messageId: message.id }) ?? [],
+      attachments:
+        this.listAttachmentsForMessageStmt.all({ messageId: message.id }) ?? [],
       items:
         this.listRunItemsForMessageStmt
           .all({ messageId: message.id })
-          .map((row) => this.deserializeRunItem(row.payload)) ?? []
+          .map((row) => this.deserializeRunItem(row.payload)) ?? [],
     }));
   }
 
@@ -445,8 +475,8 @@ class SQLiteDatabase implements IDatabase {
   }
 
   private configure(): void {
-    this.db.pragma('foreign_keys = ON');
-    this.db.pragma('journal_mode = WAL');
+    this.db.pragma("foreign_keys = ON");
+    this.db.pragma("journal_mode = WAL");
   }
 
   private runMigrations(): void {
@@ -461,7 +491,7 @@ class SQLiteDatabase implements IDatabase {
     try {
       return JSON.parse(payload) as ThreadItem;
     } catch {
-      return { type: 'unknown', value: payload } as ThreadItem;
+      return { type: "unknown", value: payload } as ThreadItem;
     }
   }
 }

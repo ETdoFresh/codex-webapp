@@ -3,7 +3,11 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { IncomingAttachment } from '../types/api';
 import type { NewAttachmentInput } from '../types/database';
-import { ensureWorkspaceDirectory, getWorkspaceRoot } from '../workspaces';
+import {
+  ensureWorkspaceDirectory,
+  getSessionAttachmentsDirectory,
+  getWorkspaceRoot
+} from '../workspaces';
 import {
   MAX_ATTACHMENT_SIZE_BYTES,
   mimeExtensionMap
@@ -31,8 +35,7 @@ export const saveAttachmentsToWorkspace = (
   }
 
   const workspaceDir = ensureWorkspaceDirectory(sessionId);
-  const attachmentsDir = path.join(workspaceDir, 'attachments');
-  fs.mkdirSync(attachmentsDir, { recursive: true });
+  const attachmentsDir = getSessionAttachmentsDirectory(sessionId);
 
   return attachments.map((attachment) => {
     const buffer = Buffer.from(attachment.base64, 'base64');

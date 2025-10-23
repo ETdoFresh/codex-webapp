@@ -247,6 +247,43 @@ function App() {
   const isRawView = chatViewMode === "raw";
   const isDetailedView = chatViewMode === "detailed";
   const isFileEditorView = chatViewMode === "editor";
+  const workspacePathDisplay = useMemo(() => {
+    if (!workspaceInfo?.root) {
+      return {
+        display: "Loading workspace…",
+        title: "Workspace location is loading…",
+      } as const;
+    }
+
+    const original = workspaceInfo.root;
+    const normalized = original.replace(/\\/g, "/");
+    if (normalized.length <= 48) {
+      return { display: normalized, title: original } as const;
+    }
+
+    const segments = normalized
+      .split("/")
+      .filter((segment) => segment.length > 0);
+
+    if (segments.length === 0) {
+      return { display: "/", title: original } as const;
+    }
+
+    if (segments.length <= 2) {
+      const start = normalized.slice(0, 12);
+      const end = normalized.slice(-24);
+      return { display: `${start}…${end}`, title: original } as const;
+    }
+
+    const hasDrive = /^[A-Za-z]:$/.test(segments[0]);
+    const prefix = hasDrive
+      ? `${segments[0]}/`
+      : normalized.startsWith("/")
+        ? "/"
+        : `${segments[0]}/`;
+    const tail = segments.slice(-2).join("/");
+    return { display: `${prefix}…/${tail}`, title: original } as const;
+  }, [workspaceInfo]);
   const markdownPlugins = useMemo(() => [remarkGfm], []);
   const inlineMarkdownComponents = useMemo<Components>(
     () => ({
@@ -1557,6 +1594,13 @@ function App() {
           </p>
         </div>
         <div className="header-actions">
+          <div
+            className="workspace-current workspace-header-summary"
+            title={workspacePathDisplay.title}
+          >
+            <span className="workspace-current-label">Workspace</span>
+            <code>{workspacePathDisplay.display}</code>
+          </div>
           <button
             type="button"
             className="theme-toggle"
@@ -1643,6 +1687,13 @@ function App() {
                   </p>
                 </div>
                 <div className="chat-header-tools">
+                  <div
+                    className="workspace-current"
+                    title={workspacePathDisplay.title}
+                  >
+                    <span className="workspace-current-label">Workspace</span>
+                    <code>{workspacePathDisplay.display}</code>
+                  </div>
                   <button
                     type="button"
                     className="ghost-button workspace-button"
@@ -1653,6 +1704,7 @@ function App() {
                       setWorkspaceModalOpen(true);
                     }}
                     aria-label="Change workspace directory"
+                    title="Change workspace directory"
                   >
                     Workspace…
                   </button>

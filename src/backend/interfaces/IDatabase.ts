@@ -1,23 +1,32 @@
-import type { ThreadItem } from '@openai/codex-sdk';
-import type { AttachmentRecord, MessageWithAttachments, NewAttachmentInput, SessionRecord } from '../types/database';
+import type { ThreadItem } from "@openai/codex-sdk";
+import type {
+  AttachmentRecord,
+  MessageWithAttachments,
+  NewAttachmentInput,
+  SessionRecord,
+} from "../types/database";
 
 interface IDatabase {
   createSession(title: string): SessionRecord;
   listSessions(): SessionRecord[];
   getSession(id: string): SessionRecord | null;
   updateSessionTitle(id: string, title: string): SessionRecord | null;
-  updateSessionThreadId(id: string, codexThreadId: string | null): SessionRecord | null;
+  updateSessionThreadId(
+    id: string,
+    codexThreadId: string | null,
+  ): SessionRecord | null;
   deleteSession(id: string): boolean;
   addMessage(
     sessionId: string,
-    role: MessageWithAttachments['role'],
+    role: MessageWithAttachments["role"],
     content: string,
     attachments?: NewAttachmentInput[],
-    items?: ThreadItem[]
+    items?: ThreadItem[],
   ): MessageWithAttachments;
   listMessages(sessionId: string): MessageWithAttachments[];
   getDatabasePath(): string;
   getAttachment(id: string): AttachmentRecord | null;
+  resetAllSessionThreads(): void;
 }
 
 export default IDatabase;
