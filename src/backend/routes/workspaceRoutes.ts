@@ -4,18 +4,17 @@ import path from "node:path";
 import { Router } from "express";
 import { z } from "zod";
 import asyncHandler from "../middleware/asyncHandler";
-import { codexManager } from "../codexManager";
 import database from "../db";
+import { codexManager } from "../codexManager";
 import {
-  DEFAULT_WORKSPACE_ROOT,
   ensureWorkspaceDirectory,
-  getWorkspaceRoot,
-  updateWorkspaceRoot,
+  getDefaultWorkspacePath,
 } from "../workspaces";
+import { toSessionResponse } from "../types/api";
 
 const router = Router();
 
-const updateWorkspaceRootSchema = z.object({
+const updateWorkspaceSchema = z.object({
   path: z
     .string({
       required_error: "Path is required.",
@@ -24,7 +23,7 @@ const updateWorkspaceRootSchema = z.object({
     .min(1, "Path is required."),
 });
 
-const MAX_DIRECTORY_ENTRIES = 200;
+const normalizePath = (value: string): string => path.resolve(value);
 
 const expandUserPath = (input: string): string => {
   const trimmed = input.trim();
@@ -43,70 +42,102 @@ const expandUserPath = (input: string): string => {
   return trimmed;
 };
 
-const uniquePaths = (...paths: Array<string | null | undefined>): string[] => {
+const uniquePaths = (
+  ...candidates: Array<string | null | undefined>
+): string[] => {
   const seen = new Set<string>();
-  const result: string[] = [];
-  for (const candidate of paths) {
+  const results: string[] = [];
+  for (const candidate of candidates) {
     if (!candidate) {
       continue;
     }
-    const resolved = path.resolve(candidate);
+    const resolved = normalizePath(candidate);
     if (seen.has(resolved)) {
       continue;
     }
     seen.add(resolved);
-    result.push(resolved);
+    results.push(resolved);
   }
-  return result;
+  return results;
 };
 
-const getQuickAccessPaths = (): string[] => {
-  const cwd = process.cwd();
-  const home = os.homedir();
-  const currentRoot = getWorkspaceRoot();
-
-  const driveRoots: string[] = [];
+const getDriveRoots = (): string[] => {
+  const drives: string[] = [];
   if (process.platform === "win32") {
     for (let code = 65; code <= 90; code += 1) {
       const drive = `${String.fromCharCode(code)}:\\`;
       try {
         if (fs.existsSync(drive)) {
-          driveRoots.push(drive);
+          drives.push(drive);
         }
       } catch {
-        // ignore inaccessible drives
+        // ignore
       }
     }
   }
+  return drives;
+};
 
+const getQuickAccessPaths = (
+  sessionId: string,
+  currentPath: string | null,
+  manualPath: string | null,
+): string[] => {
+  const defaultPath = getDefaultWorkspacePath(sessionId);
+  const cwd = process.cwd();
+  const home = os.homedir();
   return uniquePaths(
-    currentRoot,
-    DEFAULT_WORKSPACE_ROOT,
+    currentPath,
+    manualPath,
+    defaultPath,
     cwd,
     home,
-    ...driveRoots,
+    ...getDriveRoots(),
   );
 };
 
+const describeWorkspace = (sessionId: string, workspacePath: string) => {
+  const defaultPath = getDefaultWorkspacePath(sessionId);
+  const normalizedCurrent = normalizePath(workspacePath);
+  const normalizedDefault = normalizePath(defaultPath);
+  const exists = fs.existsSync(normalizedCurrent)
+    ? fs.statSync(normalizedCurrent).isDirectory()
+    : false;
+  return {
+    path: normalizedCurrent,
+    defaultPath: normalizedDefault,
+    isDefault: normalizedCurrent === normalizedDefault,
+    exists,
+  } as const;
+};
+
 router.get(
-  "/api/workspaces/root",
-  asyncHandler(async (_req, res) => {
-    const root = getWorkspaceRoot();
-    const exists = fs.existsSync(root) && fs.statSync(root).isDirectory();
+  "/api/sessions/:id/workspace",
+  asyncHandler(async (req, res) => {
+    const session = database.getSession(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    ensureWorkspaceDirectory(session.id);
 
     res.json({
-      root,
-      defaultRoot: DEFAULT_WORKSPACE_ROOT,
-      isDefault: path.resolve(root) === path.resolve(DEFAULT_WORKSPACE_ROOT),
-      exists,
+      workspace: describeWorkspace(session.id, session.workspacePath),
     });
   }),
 );
 
 router.post(
-  "/api/workspaces/root",
+  "/api/sessions/:id/workspace",
   asyncHandler(async (req, res) => {
-    const parsed = updateWorkspaceRootSchema.safeParse(req.body ?? {});
+    const session = database.getSession(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    const parsed = updateWorkspaceSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({
         error: "Invalid request body.",
@@ -116,42 +147,46 @@ router.post(
     }
 
     const candidatePath = expandUserPath(parsed.data.path);
+    const resolvedCandidate = normalizePath(candidatePath);
 
-    let newRoot: string;
+    if (fs.existsSync(resolvedCandidate)) {
+      const stats = fs.statSync(resolvedCandidate);
+      if (!stats.isDirectory()) {
+        res.status(400).json({ error: "Workspace path must be a directory." });
+        return;
+      }
+    }
+
+    let updated;
     try {
-      newRoot = updateWorkspaceRoot(candidatePath);
+      updated = database.updateSessionWorkspacePath(
+        session.id,
+        resolvedCandidate,
+      );
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "Unable to update workspace root.";
+          : "Unable to update workspace path.";
       res.status(400).json({ error: message });
       return;
     }
 
-    const sessions = database.listSessions();
-    sessions.forEach((session) => {
-      try {
-        ensureWorkspaceDirectory(session.id);
-      } catch (error) {
-        console.warn(
-          `[codex-webapp] failed to ensure workspace directory for session ${session.id}:`,
-          error,
-        );
-      }
-    });
+    if (!updated) {
+      res.status(500).json({ error: "Unable to update workspace path." });
+      return;
+    }
 
-    database.resetAllSessionThreads();
-    codexManager.clearThreadCache();
+    codexManager.forgetSession(session.id);
 
     res.json({
-      root: newRoot,
-      defaultRoot: DEFAULT_WORKSPACE_ROOT,
-      isDefault: path.resolve(newRoot) === path.resolve(DEFAULT_WORKSPACE_ROOT),
-      exists: fs.existsSync(newRoot),
+      workspace: describeWorkspace(updated.id, updated.workspacePath),
+      session: toSessionResponse(updated),
     });
   }),
 );
+
+const MAX_DIRECTORY_ENTRIES = 200;
 
 const toDirectoryEntries = (
   directory: string,
@@ -188,11 +223,19 @@ const toDirectoryEntries = (
 };
 
 router.get(
-  "/api/workspaces/browse",
+  "/api/sessions/:id/workspace/browse",
   asyncHandler(async (req, res) => {
+    const session = database.getSession(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    ensureWorkspaceDirectory(session.id);
+
     const rawPath = typeof req.query.path === "string" ? req.query.path : "";
-    const expanded = rawPath ? expandUserPath(rawPath) : getWorkspaceRoot();
-    const targetPath = path.resolve(expanded);
+    const expanded = rawPath ? expandUserPath(rawPath) : session.workspacePath;
+    const targetPath = normalizePath(expanded);
 
     let exists = false;
     let isDirectory = false;
@@ -219,36 +262,28 @@ router.get(
       }
     }
 
-    const parentCandidate = path.dirname(targetPath);
-    const parentPath =
-      parentCandidate && parentCandidate !== targetPath
-        ? parentCandidate
-        : null;
-
-    let parentExists = false;
-    if (!exists && parentPath) {
-      try {
-        const stats = fs.statSync(parentPath);
-        parentExists = stats.isDirectory();
-      } catch {
-        parentExists = false;
-      }
+    let entries: Array<{ name: string; path: string }> = [];
+    let entriesTruncated = false;
+    if (exists && isDirectory) {
+      const result = toDirectoryEntries(targetPath);
+      entries = result.entries;
+      entriesTruncated = result.truncated;
     }
 
-    const { entries, truncated } =
-      exists && isDirectory
-        ? toDirectoryEntries(targetPath)
-        : { entries: [], truncated: false };
-
+    const parentPath = path.resolve(targetPath, "..");
     res.json({
       targetPath,
       exists,
       isDirectory,
-      parentPath,
-      canCreate: !exists && parentExists,
+      parentPath: targetPath === parentPath ? null : parentPath,
+      canCreate: !exists,
       entries,
-      entriesTruncated: truncated,
-      quickAccess: getQuickAccessPaths(),
+      entriesTruncated,
+      quickAccess: getQuickAccessPaths(
+        session.id,
+        session.workspacePath,
+        rawPath || null,
+      ),
       error: errorMessage,
     });
   }),

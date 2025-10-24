@@ -13,7 +13,7 @@ import {
 } from "../config/attachments";
 import { DEFAULT_SESSION_TITLE } from "../config/sessions";
 import { saveAttachmentsToWorkspace } from "../utils/attachments";
-import { ensureWorkspaceDirectory, getWorkspaceRoot } from "../workspaces";
+import { ensureWorkspaceDirectory } from "../workspaces";
 import type { IncomingAttachment, MessageResponse } from "../types/api";
 import { messageToResponse, toSessionResponse } from "../types/api";
 import type { SessionRecord } from "../types/database";
@@ -123,6 +123,7 @@ export async function handleSessionMessageRequest(
   );
 
   const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+  session.workspacePath = workspaceDirectory;
   const normalizedWorkspaceDirectory = workspaceDirectory.replace(/\\/g, "/");
 
   if (session.title === DEFAULT_SESSION_TITLE && storedContent.length > 0) {
@@ -145,18 +146,14 @@ export async function handleSessionMessageRequest(
         : "";
 
   let codexInput =
-    `${CODING_AGENT_INSTRUCTIONS}\n\nCurrent workspace root: ${normalizedWorkspaceDirectory}\n\nUser request:\n${userRequest}`.trimEnd();
+    `${CODING_AGENT_INSTRUCTIONS}\n\nCurrent workspace directory: ${normalizedWorkspaceDirectory}\n\nUser request:\n${userRequest}`.trimEnd();
 
   if (userMessage.attachments.length > 0) {
     const attachmentSummary = userMessage.attachments
       .map((attachment, index) => {
-        const workspaceRelativePath = attachment.relativePath.startsWith(
-          `${session.id}/`,
-        )
-          ? attachment.relativePath.slice(session.id.length + 1)
-          : attachment.relativePath;
+        const workspaceRelativePath = attachment.relativePath;
         const absolutePath = path
-          .resolve(getWorkspaceRoot(), attachment.relativePath)
+          .resolve(workspaceDirectory, attachment.relativePath)
           .replace(/\\/g, "/");
         return `${index + 1}. ${attachment.filename} (workspace path: ${workspaceRelativePath}; absolute path: ${absolutePath})`;
       })
@@ -172,10 +169,12 @@ export async function handleSessionMessageRequest(
   res.flushHeaders?.();
 
   const streamDebugLogPath = path.join(
-    getWorkspaceRoot(),
-    "..",
-    "stream-debug.log",
+    workspaceDirectory,
+    ".codex",
+    "logs",
+    `${session.id}-stream-debug.log`,
   );
+  fs.mkdirSync(path.dirname(streamDebugLogPath), { recursive: true });
   const appendDebugLog = (entry: unknown) => {
     try {
       const serialized =

@@ -17,7 +17,7 @@ import {
   createSession,
   deleteSession,
   fetchMeta,
-  fetchWorkspaceRootInfo,
+  fetchSessionWorkspaceInfo,
   fetchMessages,
   fetchSessions,
   streamPostMessage,
@@ -29,7 +29,7 @@ import type {
   PostMessageErrorResponse,
   Session,
   TurnItem,
-  WorkspaceRootInfo,
+  SessionWorkspaceInfo,
 } from "./api/types";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -216,9 +216,9 @@ function App() {
   const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(
     new Set(),
   );
-  const [workspaceInfo, setWorkspaceInfo] = useState<WorkspaceRootInfo | null>(
-    null,
-  );
+  const [workspaceInfo, setWorkspaceInfo] = useState<
+    SessionWorkspaceInfo | null
+  >(null);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -248,14 +248,17 @@ function App() {
   const isDetailedView = chatViewMode === "detailed";
   const isFileEditorView = chatViewMode === "editor";
   const workspacePathDisplay = useMemo(() => {
-    if (!workspaceInfo?.root) {
+    const effectivePath =
+      workspaceInfo?.path ?? activeSession?.workspacePath ?? "";
+
+    if (!effectivePath) {
       return {
-        display: "Loading workspace…",
-        title: "Workspace location is loading…",
+        display: "Select a workspace…",
+        title: "No workspace directory selected.",
       } as const;
     }
 
-    const original = workspaceInfo.root;
+    const original = effectivePath;
     const normalized = original.replace(/\\/g, "/");
     if (normalized.length <= 48) {
       return { display: normalized, title: original } as const;
@@ -283,7 +286,7 @@ function App() {
         : `${segments[0]}/`;
     const tail = segments.slice(-2).join("/");
     return { display: `${prefix}…/${tail}`, title: original } as const;
-  }, [workspaceInfo]);
+  }, [workspaceInfo, activeSession]);
   const markdownPlugins = useMemo(() => [remarkGfm], []);
   const inlineMarkdownComponents = useMemo<Components>(
     () => ({
@@ -459,15 +462,23 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!activeSessionId) {
+      setWorkspaceInfo(null);
+      return;
+    }
+
     let canceled = false;
     const loadWorkspace = async () => {
       try {
-        const info = await fetchWorkspaceRootInfo();
+        const info = await fetchSessionWorkspaceInfo(activeSessionId);
         if (!canceled) {
           setWorkspaceInfo(info);
         }
       } catch (error) {
-        console.warn("Failed to load workspace information", error);
+        if (!canceled) {
+          console.warn("Failed to load workspace information", error);
+          setWorkspaceInfo(null);
+        }
       }
     };
 
@@ -476,7 +487,7 @@ function App() {
     return () => {
       canceled = true;
     };
-  }, []);
+  }, [activeSessionId]);
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -494,14 +505,23 @@ function App() {
     setTheme((previous) => (previous === "dark" ? "light" : "dark"));
   };
 
-  const refreshWorkspaceInfo = useCallback(async () => {
-    try {
-      const info = await fetchWorkspaceRootInfo();
-      setWorkspaceInfo(info);
-    } catch (error) {
-      console.warn("Failed to refresh workspace info", error);
-    }
-  }, []);
+  const refreshWorkspaceInfo = useCallback(
+    async (sessionId?: string) => {
+      const targetSessionId = sessionId ?? activeSessionId;
+      if (!targetSessionId) {
+        setWorkspaceInfo(null);
+        return;
+      }
+
+      try {
+        const info = await fetchSessionWorkspaceInfo(targetSessionId);
+        setWorkspaceInfo(info);
+      } catch (error) {
+        console.warn("Failed to refresh workspace info", error);
+      }
+    },
+    [activeSessionId],
+  );
 
   const readFileAsDataUrl = useCallback(
     (file: File): Promise<{ dataUrl: string; base64: string }> =>
@@ -1344,6 +1364,8 @@ function App() {
                 codexThreadId: null,
                 createdAt: normalizedMessage.createdAt,
                 updatedAt: normalizedMessage.createdAt,
+                workspacePath:
+                  workspaceInfo?.path ?? activeSession?.workspacePath ?? "",
               });
             }
 
@@ -1963,11 +1985,18 @@ function App() {
 
       <WorkspaceRootModal
         open={workspaceModalOpen}
+        session={activeSession}
         workspaceInfo={workspaceInfo}
         onClose={() => setWorkspaceModalOpen(false)}
-        onRootUpdated={(info) => {
-          setWorkspaceInfo(info);
-          void refreshWorkspaceInfo();
+        onWorkspaceUpdated={(updatedSession, info) => {
+          setSessions((previous) =>
+            previous.map((item) =>
+              item.id === updatedSession.id ? updatedSession : item,
+            ),
+          );
+          if (activeSessionId === updatedSession.id) {
+            setWorkspaceInfo(info);
+          }
         }}
       />
     </div>

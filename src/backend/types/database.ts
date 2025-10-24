@@ -6,6 +6,7 @@ export type SessionRecord = {
   codexThreadId: string | null;
   createdAt: string;
   updatedAt: string;
+  workspacePath: string;
 };
 
 export type MessageRecord = {

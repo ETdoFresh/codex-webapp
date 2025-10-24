@@ -6,7 +6,7 @@ import { v4 as uuid } from "uuid";
 import type { ThreadItem } from "@openai/codex-sdk";
 import type IDatabase from "./interfaces/IDatabase";
 import type IWorkspace from "./interfaces/IWorkspace";
-import { workspaceManager, getWorkspaceRoot } from "./workspaces";
+import { workspaceManager } from "./workspaces";
 import type {
   AttachmentRecord,
   MessageRecord,
@@ -32,9 +32,10 @@ const dataDir = process.env.BACKEND_DATA_DIR
   : defaultDataDir;
 
 fs.mkdirSync(dataDir, { recursive: true });
-fs.mkdirSync(getWorkspaceRoot(), { recursive: true });
 
 const databasePath = path.join(dataDir, "chat.db");
+
+const normalizePath = (value: string): string => path.resolve(value);
 
 const migrations: string[] = [
   `
@@ -44,6 +45,13 @@ const migrations: string[] = [
     codex_thread_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+  )
+`,
+  `
+  CREATE TABLE IF NOT EXISTS session_workspaces (
+    session_id TEXT PRIMARY KEY,
+    workspace_path TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
   )
 `,
   `
@@ -113,6 +121,14 @@ class SQLiteDatabase implements IDatabase {
     createdAt: string;
     updatedAt: string;
   }>;
+  private readonly upsertSessionWorkspaceStmt: Statement<{
+    sessionId: string;
+    workspacePath: string;
+  }>;
+  private readonly listWorkspaceMappingsStmt: Statement<
+    [],
+    { sessionId: string; workspacePath: string }
+  >;
   private readonly listSessionsStmt: Statement<[], SessionRecord>;
   private readonly getSessionStmt: Statement<{ id: string }, SessionRecord>;
   private readonly updateSessionTitleStmt: Statement<{
@@ -177,19 +193,42 @@ class SQLiteDatabase implements IDatabase {
     this.db = new Database(databasePath);
     this.configure();
     this.runMigrations();
+    this.upsertSessionWorkspaceStmt = this.db.prepare(`
+      INSERT OR REPLACE INTO session_workspaces (session_id, workspace_path)
+      VALUES (@sessionId, @workspacePath)
+    `);
+    this.listWorkspaceMappingsStmt = this.db.prepare(`
+      SELECT session_id as sessionId, workspace_path as workspacePath
+      FROM session_workspaces
+    `);
+    this.initializeWorkspaceMappings();
     this.insertSessionStmt = this.db.prepare(`
       INSERT INTO sessions (id, title, codex_thread_id, created_at, updated_at)
       VALUES (@id, @title, @codexThreadId, @createdAt, @updatedAt)
     `);
     this.listSessionsStmt = this.db.prepare(`
-      SELECT id, title, codex_thread_id as codexThreadId, created_at as createdAt, updated_at as updatedAt
-      FROM sessions
-      ORDER BY updated_at DESC
+      SELECT
+        s.id,
+        s.title,
+        s.codex_thread_id as codexThreadId,
+        s.created_at as createdAt,
+        s.updated_at as updatedAt,
+        COALESCE(sw.workspace_path, '') as workspacePath
+      FROM sessions s
+      LEFT JOIN session_workspaces sw ON sw.session_id = s.id
+      ORDER BY s.updated_at DESC
     `);
     this.getSessionStmt = this.db.prepare(`
-      SELECT id, title, codex_thread_id as codexThreadId, created_at as createdAt, updated_at as updatedAt
-      FROM sessions
-      WHERE id = @id
+      SELECT
+        s.id,
+        s.title,
+        s.codex_thread_id as codexThreadId,
+        s.created_at as createdAt,
+        s.updated_at as updatedAt,
+        COALESCE(sw.workspace_path, '') as workspacePath
+      FROM sessions s
+      LEFT JOIN session_workspaces sw ON sw.session_id = s.id
+      WHERE s.id = @id
     `);
     this.updateSessionTitleStmt = this.db.prepare(`
       UPDATE sessions
@@ -306,6 +345,63 @@ class SQLiteDatabase implements IDatabase {
     `);
   }
 
+  private initializeWorkspaceMappings(): void {
+    const selectSessionsStmt = this.db.prepare(
+      `SELECT id FROM sessions`,
+    );
+    const existingSessions = selectSessionsStmt.all() as Array<{ id: string }>;
+    const mappings = new Map<string, string>();
+    const mappingRows = this.listWorkspaceMappingsStmt.all() as Array<{
+      sessionId: string;
+      workspacePath: string;
+    }>;
+    for (const row of mappingRows) {
+      mappings.set(row.sessionId, row.workspacePath);
+    }
+
+    for (const session of existingSessions) {
+      const storedPath = mappings.get(session.id) ?? null;
+      const resolved = this.workspace.registerSessionWorkspace(
+        session.id,
+        storedPath,
+      );
+      if (!storedPath || normalizePath(storedPath) !== resolved) {
+        this.upsertSessionWorkspaceStmt.run({
+          sessionId: session.id,
+          workspacePath: resolved,
+        });
+      }
+    }
+  }
+
+  private hydrateSessionRecord(record: SessionRecord): SessionRecord {
+    const storedPath =
+      record.workspacePath && record.workspacePath.trim().length > 0
+        ? record.workspacePath
+        : null;
+    const resolved = this.workspace.registerSessionWorkspace(
+      record.id,
+      storedPath,
+    );
+    if (!storedPath || normalizePath(storedPath) !== resolved) {
+      this.upsertSessionWorkspaceStmt.run({
+        sessionId: record.id,
+        workspacePath: resolved,
+      });
+    }
+    record.workspacePath = resolved;
+    return record;
+  }
+
+  private hydrateNullableSessionRecord(
+    record: SessionRecord | null,
+  ): SessionRecord | null {
+    if (!record) {
+      return null;
+    }
+    return this.hydrateSessionRecord(record);
+  }
+
   getDatabasePath(): string {
     return databasePath;
   }
@@ -318,6 +414,7 @@ class SQLiteDatabase implements IDatabase {
       codexThreadId: null,
       createdAt: now,
       updatedAt: now,
+      workspacePath: "",
     };
 
     this.insertSessionStmt.run({
@@ -328,17 +425,27 @@ class SQLiteDatabase implements IDatabase {
       updatedAt: record.updatedAt,
     });
 
-    this.workspace.ensureWorkspaceDirectory(record.id);
+    const workspacePath = this.workspace.registerSessionWorkspace(
+      record.id,
+      null,
+    );
+    this.upsertSessionWorkspaceStmt.run({
+      sessionId: record.id,
+      workspacePath,
+    });
 
-    return record;
+    return { ...record, workspacePath };
   }
 
   listSessions(): SessionRecord[] {
-    return this.listSessionsStmt.all() as SessionRecord[];
+    return this.listSessionsStmt
+      .all()
+      .map((record) => this.hydrateSessionRecord(record));
   }
 
   getSession(id: string): SessionRecord | null {
-    return this.getSessionStmt.get({ id }) ?? null;
+    const record = this.getSessionStmt.get({ id }) ?? null;
+    return this.hydrateNullableSessionRecord(record);
   }
 
   updateSessionTitle(id: string, title: string): SessionRecord | null {
@@ -364,6 +471,33 @@ class SQLiteDatabase implements IDatabase {
     const updatedAt = new Date().toISOString();
     this.updateSessionThreadStmt.run({ id, codexThreadId, updatedAt });
     return { ...existing, codexThreadId, updatedAt };
+  }
+
+  updateSessionWorkspacePath(
+    id: string,
+    workspacePath: string,
+  ): SessionRecord | null {
+    const existing = this.getSession(id);
+    if (!existing) {
+      return null;
+    }
+
+    const resolved = this.workspace.setSessionWorkspacePath(id, workspacePath);
+    const updatedAt = new Date().toISOString();
+    this.upsertSessionWorkspaceStmt.run({
+      sessionId: id,
+      workspacePath: resolved,
+    });
+    this.updateSessionThreadStmt.run({ id, codexThreadId: null, updatedAt });
+
+    const updated: SessionRecord = {
+      ...existing,
+      workspacePath: resolved,
+      codexThreadId: null,
+      updatedAt,
+    };
+
+    return updated;
   }
 
   resetAllSessionThreads(): void {

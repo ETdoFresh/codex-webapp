@@ -15,6 +15,10 @@ interface IDatabase {
     id: string,
     codexThreadId: string | null,
   ): SessionRecord | null;
+  updateSessionWorkspacePath(
+    id: string,
+    workspacePath: string,
+  ): SessionRecord | null;
   deleteSession(id: string): boolean;
   addMessage(
     sessionId: string,

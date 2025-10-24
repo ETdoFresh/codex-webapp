@@ -13,7 +13,7 @@ import type {
   WorkspaceFile,
   WorkspaceFileContent,
   WorkspaceFileContentResponse,
-  WorkspaceRootInfo,
+  SessionWorkspaceInfo,
   BrowseWorkspaceResponse,
 } from "./types";
 
@@ -277,24 +277,36 @@ export async function* streamPostMessage(
   }
 }
 
-export async function fetchWorkspaceRootInfo(): Promise<WorkspaceRootInfo> {
-  return request<WorkspaceRootInfo>("/api/workspaces/root");
+export async function fetchSessionWorkspaceInfo(
+  sessionId: string,
+): Promise<SessionWorkspaceInfo> {
+  const data = await request<{ workspace: SessionWorkspaceInfo }>(
+    `/api/sessions/${sessionId}/workspace`,
+  );
+  return data.workspace;
 }
 
-export async function updateWorkspaceRootPath(
+export async function updateSessionWorkspacePath(
+  sessionId: string,
   nextPath: string,
-): Promise<WorkspaceRootInfo> {
-  return request<WorkspaceRootInfo>("/api/workspaces/root", {
-    method: "POST",
-    body: JSON.stringify({ path: nextPath }),
-  });
+): Promise<{ workspace: SessionWorkspaceInfo; session: Session }> {
+  return request<{ workspace: SessionWorkspaceInfo; session: Session }>(
+    `/api/sessions/${sessionId}/workspace`,
+    {
+      method: "POST",
+      body: JSON.stringify({ path: nextPath }),
+    },
+  );
 }
 
-export async function browseWorkspaceDirectories(
+export async function browseSessionWorkspaceDirectories(
+  sessionId: string,
   path?: string,
 ): Promise<BrowseWorkspaceResponse> {
   const query = path ? `?path=${encodeURIComponent(path)}` : "";
-  return request<BrowseWorkspaceResponse>(`/api/workspaces/browse${query}`);
+  return request<BrowseWorkspaceResponse>(
+    `/api/sessions/${sessionId}/workspace/browse${query}`,
+  );
 }
 
 export async function postMessage(

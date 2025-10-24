@@ -7,7 +7,7 @@ import { codexManager } from '../codexManager';
 import asyncHandler from '../middleware/asyncHandler';
 import { DEFAULT_SESSION_TITLE } from '../config/sessions';
 import { handleSessionMessageRequest } from '../services/sessionMessageService';
-import { ensureWorkspaceDirectory, getWorkspaceDirectory, getWorkspaceRoot } from '../workspaces';
+import { ensureWorkspaceDirectory, getWorkspaceDirectory } from '../workspaces';
 import { messageToResponse, toSessionResponse } from '../types/api';
 
 const router = Router();
@@ -417,9 +417,13 @@ router.get(
       return;
     }
 
-    const workspaceRoot = getWorkspaceRoot();
-    const absolutePath = path.resolve(workspaceRoot, attachment.relativePath);
-    if (!absolutePath.startsWith(workspaceRoot)) {
+    const workspaceDirectory = getWorkspaceDirectory(sessionId);
+    const absolutePath = path.resolve(workspaceDirectory, attachment.relativePath);
+    const relativeToWorkspace = path.relative(workspaceDirectory, absolutePath);
+    if (
+      relativeToWorkspace.startsWith('..') ||
+      path.isAbsolute(relativeToWorkspace)
+    ) {
       res.status(404).json({ error: 'Attachment not found' });
       return;
     }

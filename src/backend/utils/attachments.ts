@@ -6,7 +6,7 @@ import type { NewAttachmentInput } from '../types/database';
 import {
   ensureWorkspaceDirectory,
   getSessionAttachmentsDirectory,
-  getWorkspaceRoot
+  getWorkspaceDirectory
 } from '../workspaces';
 import {
   MAX_ATTACHMENT_SIZE_BYTES,
@@ -52,7 +52,8 @@ export const saveAttachmentsToWorkspace = (
     const absolutePath = path.join(attachmentsDir, storedName);
     fs.writeFileSync(absolutePath, buffer);
 
-    const relativePath = path.relative(getWorkspaceRoot(), absolutePath).replace(/\\/g, '/');
+    const workspaceRoot = getWorkspaceDirectory(sessionId);
+    const relativePath = path.relative(workspaceRoot, absolutePath).replace(/\\/g, '/');
 
     return {
       filename: sanitizeFileName(attachment.filename),

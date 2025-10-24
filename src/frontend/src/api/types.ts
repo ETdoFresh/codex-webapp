@@ -4,6 +4,7 @@ export type Session = {
   codexThreadId: string | null;
   createdAt: string;
   updatedAt: string;
+  workspacePath: string;
 };
 
 export type MessageRole = "system" | "user" | "assistant";
@@ -121,9 +122,9 @@ export type WorkspaceFileContentResponse = {
   file: WorkspaceFileContent;
 };
 
-export type WorkspaceRootInfo = {
-  root: string;
-  defaultRoot: string;
+export type SessionWorkspaceInfo = {
+  path: string;
+  defaultPath: string;
   isDefault: boolean;
   exists: boolean;
 };

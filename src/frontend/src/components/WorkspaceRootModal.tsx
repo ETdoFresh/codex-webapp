@@ -8,16 +8,24 @@ import {
 } from "react";
 import {
   ApiError,
-  browseWorkspaceDirectories,
-  updateWorkspaceRootPath,
+  browseSessionWorkspaceDirectories,
+  updateSessionWorkspacePath,
 } from "../api/client";
-import type { BrowseWorkspaceResponse, WorkspaceRootInfo } from "../api/types";
+import type {
+  BrowseWorkspaceResponse,
+  Session,
+  SessionWorkspaceInfo,
+} from "../api/types";
 
 type WorkspaceRootModalProps = {
   open: boolean;
-  workspaceInfo: WorkspaceRootInfo | null;
+  session: Session | null;
+  workspaceInfo: SessionWorkspaceInfo | null;
   onClose: () => void;
-  onRootUpdated: (info: WorkspaceRootInfo) => void;
+  onWorkspaceUpdated: (
+    session: Session,
+    info: SessionWorkspaceInfo,
+  ) => void;
 };
 
 const extractErrorMessage = (error: unknown, fallback: string): string => {
@@ -39,9 +47,10 @@ const extractErrorMessage = (error: unknown, fallback: string): string => {
 
 function WorkspaceRootModal({
   open,
+  session,
   workspaceInfo,
   onClose,
-  onRootUpdated,
+  onWorkspaceUpdated,
 }: WorkspaceRootModalProps) {
   const [manualPath, setManualPath] = useState("");
   const [listing, setListing] = useState<BrowseWorkspaceResponse | null>(null);
@@ -51,26 +60,37 @@ function WorkspaceRootModal({
   const [submitting, setSubmitting] = useState(false);
   const requestTokenRef = useRef(0);
 
-  const currentPath = listing?.targetPath ?? workspaceInfo?.root ?? "";
+  const sessionId = session?.id ?? null;
+  const sessionTitle = session?.title ?? "Current Session";
+
+  const currentPath =
+    listing?.targetPath ??
+    workspaceInfo?.path ??
+    session?.workspacePath ??
+    "";
   const canUseDirectory =
-    !!listing && (listing.exists ? listing.isDirectory : listing.canCreate);
+    !!sessionId &&
+    !!listing &&
+    (listing.exists ? listing.isDirectory : listing.canCreate);
 
   const quickAccess = useMemo(() => {
     if (listing && listing.quickAccess.length > 0) {
       return listing.quickAccess;
     }
-    if (workspaceInfo) {
-      return Array.from(
-        new Set(
-          [workspaceInfo.root, workspaceInfo.defaultRoot, manualPath].filter(
-            (item): item is string =>
-              typeof item === "string" && item.length > 0,
-          ),
+    const candidates = [
+      workspaceInfo?.path ?? null,
+      workspaceInfo?.defaultPath ?? null,
+      session?.workspacePath ?? null,
+      manualPath || null,
+    ];
+    return Array.from(
+      new Set(
+        candidates.filter((item): item is string =>
+          typeof item === "string" && item.length > 0,
         ),
-      );
-    }
-    return manualPath ? [manualPath] : [];
-  }, [listing, workspaceInfo, manualPath]);
+      ),
+    );
+  }, [listing, workspaceInfo, session, manualPath]);
 
   const resetState = useCallback(() => {
     requestTokenRef.current += 1;
@@ -82,32 +102,43 @@ function WorkspaceRootModal({
     setLoadingListing(false);
   }, []);
 
-  const loadPath = useCallback(async (pathToLoad: string) => {
-    const token = requestTokenRef.current + 1;
-    requestTokenRef.current = token;
-    setLoadingListing(true);
-    setListingError(null);
-    try {
-      const response = await browseWorkspaceDirectories(pathToLoad);
-      if (requestTokenRef.current !== token) {
+  const loadPath = useCallback(
+    async (pathToLoad: string) => {
+      if (!sessionId) {
+        setListingError("Select a chat session before choosing a workspace.");
         return;
       }
-      setListing(response);
-      setManualPath(response.targetPath);
-    } catch (error) {
-      if (requestTokenRef.current !== token) {
-        return;
+
+      const token = requestTokenRef.current + 1;
+      requestTokenRef.current = token;
+      setLoadingListing(true);
+      setListingError(null);
+      try {
+        const response = await browseSessionWorkspaceDirectories(
+          sessionId,
+          pathToLoad,
+        );
+        if (requestTokenRef.current !== token) {
+          return;
+        }
+        setListing(response);
+        setManualPath(response.targetPath);
+      } catch (error) {
+        if (requestTokenRef.current !== token) {
+          return;
+        }
+        setListing(null);
+        setListingError(
+          extractErrorMessage(error, "Unable to browse the selected path."),
+        );
+      } finally {
+        if (requestTokenRef.current === token) {
+          setLoadingListing(false);
+        }
       }
-      setListing(null);
-      setListingError(
-        extractErrorMessage(error, "Unable to browse the selected path."),
-      );
-    } finally {
-      if (requestTokenRef.current === token) {
-        setLoadingListing(false);
-      }
-    }
-  }, []);
+    },
+    [sessionId],
+  );
 
   useEffect(() => {
     if (!open) {
@@ -115,7 +146,13 @@ function WorkspaceRootModal({
       return;
     }
 
-    const initialPath = workspaceInfo?.root ?? "";
+    if (!sessionId) {
+      setListingError("Select a chat session to choose a workspace.");
+      setListing(null);
+      return;
+    }
+
+    const initialPath = workspaceInfo?.path ?? session?.workspacePath ?? "";
     if (initialPath) {
       setManualPath(initialPath);
       void loadPath(initialPath);
@@ -123,7 +160,14 @@ function WorkspaceRootModal({
       setManualPath("");
       setListing(null);
     }
-  }, [open, workspaceInfo?.root, loadPath, resetState]);
+  }, [
+    open,
+    sessionId,
+    session?.workspacePath,
+    workspaceInfo?.path,
+    loadPath,
+    resetState,
+  ]);
 
   useEffect(() => {
     if (!open) {
@@ -165,11 +209,19 @@ function WorkspaceRootModal({
       return;
     }
 
+    if (!sessionId) {
+      setSubmitError("Select a chat session before choosing a workspace.");
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const info = await updateWorkspaceRootPath(listing.targetPath);
-      onRootUpdated(info);
+      const result = await updateSessionWorkspacePath(
+        sessionId,
+        listing.targetPath,
+      );
+      onWorkspaceUpdated(result.session, result.workspace);
       onClose();
     } catch (error) {
       setSubmitError(
@@ -195,17 +247,27 @@ function WorkspaceRootModal({
       <div className="workspace-modal">
         <header className="workspace-modal-header">
           <div>
-            <h2 id="workspace-modal-title">Change Workspace Directory</h2>
+            <h2 id="workspace-modal-title">
+              Change Workspace Directory
+              {session ? ` — ${sessionTitle}` : ""}
+            </h2>
             {workspaceInfo ? (
               <p
                 className="workspace-modal-subtitle"
-                title={workspaceInfo.root}
+                title={workspaceInfo.path}
               >
-                Current: <code>{workspaceInfo.root}</code>
+                Current: <code>{workspaceInfo.path}</code>
+              </p>
+            ) : session ? (
+              <p
+                className="workspace-modal-subtitle"
+                title={session.workspacePath}
+              >
+                Current: <code>{session.workspacePath}</code>
               </p>
             ) : (
               <p className="workspace-modal-subtitle">
-                Loading current workspace…
+                Select a chat session to choose a workspace.
               </p>
             )}
           </div>
@@ -238,7 +300,7 @@ function WorkspaceRootModal({
             <button
               type="submit"
               className="ghost-button"
-              disabled={loadingListing}
+              disabled={loadingListing || !sessionId}
             >
               {loadingListing ? "Loading…" : "Go"}
             </button>

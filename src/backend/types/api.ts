@@ -7,6 +7,7 @@ export type SessionResponse = {
   codexThreadId: string | null;
   createdAt: string;
   updatedAt: string;
+  workspacePath: string;
 };
 
 export type AttachmentResponse = {
@@ -39,7 +40,8 @@ export const toSessionResponse = (session: SessionRecord): SessionResponse => ({
   title: session.title,
   codexThreadId: session.codexThreadId,
   createdAt: session.createdAt,
-  updatedAt: session.updatedAt
+  updatedAt: session.updatedAt,
+  workspacePath: session.workspacePath
 });
 
 export const attachmentToResponse = (

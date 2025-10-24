@@ -6,72 +6,53 @@ import type IWorkspace from "./interfaces/IWorkspace";
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(dirname, "../..");
 
-const defaultWorkspaceRoot = path.join(projectRoot, "workspaces");
-const resolveRoot = (candidate: string | null | undefined, fallback: string) => {
-  if (candidate && candidate.trim() !== "") {
-    return path.resolve(candidate);
-  }
-  return path.resolve(fallback);
+export const DEFAULT_WORKSPACE_ROOT = path.join(projectRoot, "workspaces");
+
+type SessionWorkspaceRecord = {
+  path: string;
+  managed: boolean;
 };
 
-const initialResolvedRoot = resolveRoot(
-  process.env.CODEX_WORKSPACES_ROOT,
-  defaultWorkspaceRoot,
-);
+const normalizePath = (candidate: string): string => path.resolve(candidate);
 
 class WorkspaceManager implements IWorkspace {
-  private root: string;
   private readonly defaultRoot: string;
-  private sharedRoot: boolean;
+  private readonly sessions: Map<string, SessionWorkspaceRecord>;
 
-  constructor(initialRoot: string, defaultRoot: string) {
-    this.defaultRoot = path.resolve(defaultRoot);
-    this.root = path.resolve(initialRoot);
-    this.sharedRoot = !this.isManagedRoot(this.root);
-    fs.mkdirSync(this.root, { recursive: true });
-    process.env.CODEX_WORKSPACES_ROOT = this.root;
+  constructor(defaultRoot: string) {
+    this.defaultRoot = normalizePath(defaultRoot);
+    this.sessions = new Map();
+    fs.mkdirSync(this.defaultRoot, { recursive: true });
   }
 
-  private isManagedRoot(candidate: string): boolean {
-    return path.resolve(candidate) === this.defaultRoot;
+  getDefaultWorkspacePath(sessionId: string): string {
+    return normalizePath(path.join(this.defaultRoot, sessionId));
   }
 
-  private updateSharedState(): void {
-    this.sharedRoot = !this.isManagedRoot(this.root);
+  private getManagedStatus(sessionId: string, workspacePath: string): boolean {
+    return normalizePath(workspacePath) === this.getDefaultWorkspacePath(sessionId);
   }
 
-  getWorkspaceRoot(): string {
-    return this.root;
-  }
+  registerSessionWorkspace(
+    sessionId: string,
+    workspacePath: string | null,
+  ): string {
+    const resolved = workspacePath && workspacePath.trim().length > 0
+      ? normalizePath(workspacePath)
+      : this.getDefaultWorkspacePath(sessionId);
 
-  setWorkspaceRoot(nextRoot: string): string {
-    const trimmed = nextRoot.trim();
-    if (!trimmed) {
-      throw new Error("Workspace root cannot be empty.");
-    }
-
-    const resolved = path.resolve(trimmed);
-    if (fs.existsSync(resolved)) {
-      const stats = fs.statSync(resolved);
-      if (!stats.isDirectory()) {
-        throw new Error("Workspace root must be a directory.");
-      }
-    } else {
-      fs.mkdirSync(resolved, { recursive: true });
-    }
-
-    this.root = resolved;
-    this.updateSharedState();
-    process.env.CODEX_WORKSPACES_ROOT = resolved;
-    return this.root;
+    const managed = this.getManagedStatus(sessionId, resolved);
+    fs.mkdirSync(resolved, { recursive: true });
+    this.sessions.set(sessionId, { path: resolved, managed });
+    return resolved;
   }
 
   getWorkspaceDirectory(sessionId: string): string {
-    if (this.sharedRoot) {
-      return this.root;
+    const record = this.sessions.get(sessionId);
+    if (record) {
+      return record.path;
     }
-
-    return path.join(this.root, sessionId);
+    return this.registerSessionWorkspace(sessionId, null);
   }
 
   ensureWorkspaceDirectory(sessionId: string): string {
@@ -80,54 +61,74 @@ class WorkspaceManager implements IWorkspace {
     return directory;
   }
 
-  removeWorkspaceDirectory(sessionId: string): void {
-    if (this.sharedRoot) {
-      const attachmentsDir = path.join(
-        this.root,
-        ".codex",
-        "attachments",
-        sessionId,
-      );
-      if (fs.existsSync(attachmentsDir)) {
-        fs.rmSync(attachmentsDir, { recursive: true, force: true });
+  setSessionWorkspacePath(sessionId: string, workspacePath: string): string {
+    const resolved = normalizePath(workspacePath);
+    const managed = this.getManagedStatus(sessionId, resolved);
+    const previous = this.sessions.get(sessionId);
+
+    fs.mkdirSync(resolved, { recursive: true });
+    this.sessions.set(sessionId, { path: resolved, managed });
+
+    if (previous && previous.managed && previous.path !== resolved) {
+      try {
+        fs.rmSync(previous.path, { recursive: true, force: true });
+      } catch (error) {
+        console.warn(
+          `[codex-webapp] failed to remove managed workspace directory ${previous.path}:`,
+          error,
+        );
       }
+    }
+
+    return resolved;
+  }
+
+  removeWorkspaceDirectory(sessionId: string): void {
+    const record = this.sessions.get(sessionId);
+    if (!record) {
       return;
     }
 
-    const directory = this.getWorkspaceDirectory(sessionId);
-    if (fs.existsSync(directory)) {
-      fs.rmSync(directory, { recursive: true, force: true });
+    if (record.managed) {
+      try {
+        fs.rmSync(record.path, { recursive: true, force: true });
+      } catch (error) {
+        console.warn(
+          `[codex-webapp] failed to remove managed workspace directory ${record.path}:`,
+          error,
+        );
+      }
     }
+
+    this.sessions.delete(sessionId);
   }
 
   getSessionAttachmentsDirectory(sessionId: string): string {
-    if (this.sharedRoot) {
-      const dir = path.join(this.root, ".codex", "attachments", sessionId);
-      fs.mkdirSync(dir, { recursive: true });
-      return dir;
-    }
-
-    const dir = path.join(this.ensureWorkspaceDirectory(sessionId), "attachments");
-    fs.mkdirSync(dir, { recursive: true });
-    return dir;
-  }
-
-  isSharedRoot(): boolean {
-    return this.sharedRoot;
+    const workspaceDir = this.ensureWorkspaceDirectory(sessionId);
+    const attachmentsDir = path.join(
+      workspaceDir,
+      ".codex",
+      "attachments",
+      sessionId,
+    );
+    fs.mkdirSync(attachmentsDir, { recursive: true });
+    return attachmentsDir;
   }
 }
 
 export const workspaceManager: IWorkspace = new WorkspaceManager(
-  initialResolvedRoot,
-  defaultWorkspaceRoot,
+  DEFAULT_WORKSPACE_ROOT,
 );
 
-export function updateWorkspaceRoot(nextRoot: string): string {
-  return workspaceManager.setWorkspaceRoot(nextRoot);
+export function getDefaultWorkspacePath(sessionId: string): string {
+  return workspaceManager.getDefaultWorkspacePath(sessionId);
 }
 
-export function getWorkspaceRoot(): string {
-  return workspaceManager.getWorkspaceRoot();
+export function registerSessionWorkspace(
+  sessionId: string,
+  workspacePath: string | null,
+): string {
+  return workspaceManager.registerSessionWorkspace(sessionId, workspacePath);
 }
 
 export function getWorkspaceDirectory(sessionId: string): string {
@@ -138,6 +139,13 @@ export function ensureWorkspaceDirectory(sessionId: string): string {
   return workspaceManager.ensureWorkspaceDirectory(sessionId);
 }
 
+export function setSessionWorkspacePath(
+  sessionId: string,
+  workspacePath: string,
+): string {
+  return workspaceManager.setSessionWorkspacePath(sessionId, workspacePath);
+}
+
 export function removeWorkspaceDirectory(sessionId: string): void {
   workspaceManager.removeWorkspaceDirectory(sessionId);
 }
@@ -146,10 +154,4 @@ export function getSessionAttachmentsDirectory(sessionId: string): string {
   return workspaceManager.getSessionAttachmentsDirectory(sessionId);
 }
 
-export function isSharedWorkspaceRoot(): boolean {
-  return workspaceManager.isSharedRoot();
-}
-
 export default workspaceManager;
-
-export const DEFAULT_WORKSPACE_ROOT = defaultWorkspaceRoot;
