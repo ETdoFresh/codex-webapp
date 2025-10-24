@@ -137,6 +137,16 @@ const ITEM_EMOJIS: Record<string, string> = {
   error: "\u{26a0}\u{fe0f}",
 };
 
+const STREAMING_PREVIEW_MAX_LENGTH = 160;
+
+const truncatePreview = (value: string): string => {
+  const trimmed = value.trim();
+  if (trimmed.length <= STREAMING_PREVIEW_MAX_LENGTH) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, STREAMING_PREVIEW_MAX_LENGTH).trimEnd()}…`;
+};
+
 const formatTitleCase = (value: string): string =>
   value
     .split(/[\s_-]+/)
@@ -1001,6 +1011,142 @@ function App() {
       };
     };
 
+    const buildStreamingPreview = (rawItem: TurnItem): string | null => {
+      if (!rawItem || typeof rawItem !== "object") {
+        return null;
+      }
+
+      const record = rawItem as Record<string, unknown>;
+      const typeValue =
+        typeof record.type === "string" && record.type.length > 0
+          ? record.type
+          : "";
+      const normalizedType = typeValue.toLowerCase();
+
+      if (normalizedType === "reasoning") {
+        const summary = summarizeReasoningItem(rawItem);
+        const textCandidate =
+          summary.text && summary.text.trim().length > 0
+            ? summary.text
+            : summary.lines.find((line) => line.trim().length > 0) ?? null;
+        if (textCandidate) {
+          return truncatePreview(textCandidate);
+        }
+        if (summary.additional && summary.additional.trim().length > 0) {
+          return truncatePreview(summary.additional);
+        }
+        return null;
+      }
+
+      if (normalizedType === "file_change") {
+        const changes = Array.isArray(record.changes) ? record.changes : [];
+        if (changes.length === 0) {
+          return "Recording file changes…";
+        }
+        const firstChange = (changes[0] as Record<string, unknown>) ?? {};
+        const pathValue =
+          typeof firstChange.path === "string" && firstChange.path.length > 0
+            ? firstChange.path
+            : "workspace file";
+        const kindSource =
+          typeof firstChange.kind === "string" && firstChange.kind.length > 0
+            ? firstChange.kind
+            : "Updated";
+        const kindLabel = formatTitleCase(String(kindSource));
+        const suffix =
+          changes.length > 1 ? ` (+${changes.length - 1} more)` : "";
+        return truncatePreview(`${kindLabel} ${pathValue}${suffix}`);
+      }
+
+      if (normalizedType === "command_execution") {
+        const commandText =
+          typeof record.command === "string" && record.command.trim().length > 0
+            ? record.command.trim()
+            : "Running command";
+        const baseStatus = formatStatusLabel(record.status);
+        const exitCode = coerceNumber(record.exit_code);
+        const statusLabel = exitCode !== null
+          ? baseStatus
+            ? `${baseStatus} · exit ${exitCode}`
+            : `Exit ${exitCode}`
+          : baseStatus;
+        const aggregatedOutput =
+          typeof record.aggregated_output === "string"
+            ? record.aggregated_output.trim()
+            : "";
+        const suffix =
+          aggregatedOutput.length > 0
+            ? ` · ${truncatePreview(aggregatedOutput)}`
+            : "";
+        const preview = `${commandText}${statusLabel ? ` · ${statusLabel}` : ""}${suffix}`;
+        return truncatePreview(preview);
+      }
+
+      if (normalizedType === "mcp_tool_call") {
+        const server =
+          typeof record.server === "string" && record.server.length > 0
+            ? record.server
+            : null;
+        const tool =
+          typeof record.tool === "string" && record.tool.length > 0
+            ? record.tool
+            : null;
+        const labelParts = [server, tool ? `tool: ${tool}` : null].filter(
+          (part): part is string => Boolean(part),
+        );
+        const baseLabel = labelParts.length > 0 ? labelParts.join(" · ") : "Tool call";
+        const statusLabel = formatStatusLabel(record.status);
+        return truncatePreview(
+          statusLabel ? `${baseLabel} · ${statusLabel}` : baseLabel,
+        );
+      }
+
+      if (normalizedType === "web_search") {
+        const query =
+          typeof record.query === "string" && record.query.trim().length > 0
+            ? record.query.trim()
+            : "unknown query";
+        return truncatePreview(`Searching for "${query}"`);
+      }
+
+      if (normalizedType === "todo_list") {
+        const items = Array.isArray(record.items) ? record.items : [];
+        if (items.length === 0) {
+          return "Updating to-do list";
+        }
+        const firstItem = (items[0] as Record<string, unknown>) ?? {};
+        const textValue =
+          typeof firstItem.text === "string" && firstItem.text.trim().length > 0
+            ? firstItem.text.trim()
+            : "To-do item";
+        const checkbox = Boolean(firstItem.completed) ? "[x]" : "[ ]";
+        const suffix = items.length > 1 ? ` (+${items.length - 1} more)` : "";
+        return truncatePreview(`${checkbox} ${textValue}${suffix}`);
+      }
+
+      if (normalizedType === "error") {
+        const messageText =
+          typeof record.message === "string" && record.message.trim().length > 0
+            ? record.message.trim()
+            : "Error reported";
+        return truncatePreview(messageText);
+      }
+
+      const textCandidates: Array<unknown> = [
+        record.text,
+        record.message,
+        record.summary,
+        record.title,
+      ];
+      for (const candidate of textCandidates) {
+        if (typeof candidate === "string" && candidate.trim().length > 0) {
+          return truncatePreview(candidate);
+        }
+      }
+
+      return null;
+    };
+
     const detailedEntries =
       detailed && messageItems.length > 0
         ? messageItems
@@ -1031,6 +1177,25 @@ function App() {
       trimmedPrimaryContent.length > 0 ? primaryContent : fallbackContent;
     const trimmedContent = displayContent.trim();
     const hasContent = trimmedContent.length > 0;
+    const isStreamingAssistant =
+      sendingMessage && message.role === "assistant" && message.id.startsWith("temp-");
+    const streamingPreview = isStreamingAssistant
+      ? (() => {
+          if (trimmedContent.length > 0) {
+            return truncatePreview(trimmedContent);
+          }
+          if (fallbackContent.trim().length > 0) {
+            return truncatePreview(fallbackContent);
+          }
+          for (const rawItem of messageItems) {
+            const preview = buildStreamingPreview(rawItem as TurnItem);
+            if (preview) {
+              return preview;
+            }
+          }
+          return null;
+        })()
+      : null;
     const detailedItemsBlock = hasDetailedItems ? (
       <>
         <div className="message-items">
@@ -1091,8 +1256,8 @@ function App() {
     ) : null;
     const placeholderText =
       message.role === "assistant"
-        ? sendingMessage && message.id.startsWith("temp-")
-          ? "Codex is thinking…"
+        ? isStreamingAssistant
+          ? streamingPreview ?? "Codex is thinking…"
           : messageItems.length > 0
             ? "Codex responded with structured output."
             : "No response yet."
@@ -1124,7 +1289,13 @@ function App() {
             {displayContent}
           </ReactMarkdown>
         ) : (
-          <p className="message-content message-empty">{placeholderText}</p>
+          <ReactMarkdown
+            className="message-content message-empty"
+            remarkPlugins={markdownPlugins}
+            components={blockMarkdownComponents}
+          >
+            {placeholderText}
+          </ReactMarkdown>
         )}
         {attachments.length > 0 ? (
           <div className="message-attachments">
