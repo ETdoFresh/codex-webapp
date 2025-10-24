@@ -22,6 +22,9 @@ import {
   fetchSessions,
   streamPostMessage,
   updateMeta,
+  updateSessionTitle,
+  setSessionTitleLock,
+  autoUpdateSessionTitle,
 } from "./api/client";
 import type {
   AppMeta,
@@ -147,6 +150,34 @@ const truncatePreview = (value: string): string => {
   return `${trimmed.slice(0, STREAMING_PREVIEW_MAX_LENGTH).trimEnd()}…`;
 };
 
+const roleLabel = (role: Message["role"]): string => {
+  switch (role) {
+    case "assistant":
+      return "Assistant";
+    case "system":
+      return "System";
+    default:
+      return "User";
+  }
+};
+
+const buildConversationContents = (messages: Message[]): string =>
+  messages
+    .map((message) => {
+      const label = roleLabel(message.role);
+      const content = (message.content ?? "").trim();
+      const attachments = message.attachments ?? [];
+      const attachmentNote =
+        attachments.length > 0
+          ? ` [Attachments: ${attachments
+              .map((attachment) => attachment.filename)
+              .join(", ")}]`
+          : "";
+      const body = content.length > 0 ? content : "(No content)";
+      return `${label}: ${body}${attachmentNote}`;
+    })
+    .join("\n");
+
 const formatTitleCase = (value: string): string =>
   value
     .split(/[\s_-]+/)
@@ -229,10 +260,15 @@ function App() {
   const [workspaceInfo, setWorkspaceInfo] = useState<
     SessionWorkspaceInfo | null
   >(null);
+  const [titleEditorOpen, setTitleEditorOpen] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [titleLocking, setTitleLocking] = useState(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  const titleEditingRef = useRef(false);
 
   const toggleItemExpansion = useCallback((entryKey: string) => {
     setExpandedItemKeys((previous) => {
@@ -472,6 +508,15 @@ function App() {
   }, []);
 
   useEffect(() => {
+    titleEditingRef.current = titleEditorOpen;
+  }, [titleEditorOpen]);
+
+  useEffect(() => {
+    setTitleEditorOpen(false);
+    setTitleDraft("");
+  }, [activeSessionId]);
+
+  useEffect(() => {
     if (!activeSessionId) {
       setWorkspaceInfo(null);
       return;
@@ -514,6 +559,88 @@ function App() {
   const toggleTheme = () => {
     setTheme((previous) => (previous === "dark" ? "light" : "dark"));
   };
+
+  const applySessionUpdate = useCallback((incoming: Session) => {
+    setSessions((previous) => {
+      let found = false;
+      const next = previous.map((session) => {
+        if (session.id === incoming.id) {
+          found = true;
+          return { ...session, ...incoming };
+        }
+        return session;
+      });
+      const merged = found ? next : [...previous, incoming];
+      return sortSessions(merged);
+    });
+  }, []);
+
+  const handleTitleLockToggle = useCallback(async () => {
+    if (!activeSession || titleLocking) {
+      return;
+    }
+
+    setTitleLocking(true);
+    try {
+      const updated = await setSessionTitleLock(
+        activeSession.id,
+        !activeSession.titleLocked,
+      );
+      applySessionUpdate(updated);
+      if (updated.titleLocked) {
+        setTitleEditorOpen(false);
+        setTitleDraft("");
+      }
+    } catch (error) {
+      console.error("Failed to toggle title lock", error);
+      setErrorNotice("Unable to update title lock. Please try again.");
+    } finally {
+      setTitleLocking(false);
+    }
+  }, [activeSession, applySessionUpdate, titleLocking]);
+
+  const handleTitleEditStart = useCallback(() => {
+    if (!activeSession || activeSession.titleLocked) {
+      return;
+    }
+    setTitleDraft(activeSession.title);
+    setTitleEditorOpen(true);
+  }, [activeSession]);
+
+  const handleTitleEditCancel = useCallback(() => {
+    setTitleEditorOpen(false);
+    setTitleDraft("");
+  }, []);
+
+  const handleTitleEditSave = useCallback(async () => {
+    if (!activeSession || titleSaving) {
+      return;
+    }
+
+    const trimmed = titleDraft.trim();
+    if (trimmed.length === 0) {
+      setErrorNotice("Session title cannot be empty.");
+      return;
+    }
+
+    if (trimmed === activeSession.title) {
+      setTitleEditorOpen(false);
+      return;
+    }
+
+    setTitleSaving(true);
+    try {
+      const updated = await updateSessionTitle(activeSession.id, trimmed);
+      applySessionUpdate(updated);
+      setTitleEditorOpen(false);
+      setTitleDraft("");
+    } catch (error) {
+      console.error("Failed to update session title", error);
+      setErrorNotice("Unable to update session title. Please try again.");
+    } finally {
+      setTitleSaving(false);
+    }
+  }, [activeSession, applySessionUpdate, titleDraft, titleSaving]);
 
   const refreshWorkspaceInfo = useCallback(
     async (sessionId?: string) => {
@@ -1508,7 +1635,7 @@ function App() {
 
               found = true;
               let inferredTitle = session.title;
-              if (session.title === DEFAULT_SESSION_TITLE) {
+              if (!session.titleLocked && session.title === DEFAULT_SESSION_TITLE) {
                 const contentForTitle = normalizedMessage.content.trim();
                 if (contentForTitle.length > 0) {
                   inferredTitle =
@@ -1537,6 +1664,7 @@ function App() {
                 updatedAt: normalizedMessage.createdAt,
                 workspacePath:
                   workspaceInfo?.path ?? activeSession?.workspacePath ?? "",
+                titleLocked: false,
               });
             }
 
@@ -1588,32 +1716,35 @@ function App() {
               } else {
                 nextMessages.push(normalizedMessage);
               }
+
+              if (
+                !streamEvent.session.titleLocked &&
+                !titleEditingRef.current &&
+                nextMessages.length > 0
+              ) {
+                const conversationContents = buildConversationContents(
+                  nextMessages,
+                );
+                void autoUpdateSessionTitle(
+                  streamEvent.session.id,
+                  conversationContents,
+                )
+                  .then((updatedSession) => {
+                    applySessionUpdate(updatedSession);
+                  })
+                  .catch((error) => {
+                    console.warn(
+                      "Failed to auto-update session title",
+                      error,
+                    );
+                  });
+              }
+
               return nextMessages;
             });
           }
 
-          setSessions((previous) => {
-            let found = false;
-            const updated = previous.map((session) => {
-              if (session.id !== streamEvent.session.id) {
-                return session;
-              }
-
-              found = true;
-              return {
-                ...session,
-                title: streamEvent.session.title,
-                codexThreadId: streamEvent.session.codexThreadId,
-                updatedAt: streamEvent.session.updatedAt,
-              };
-            });
-
-            if (!found) {
-              updated.push(streamEvent.session);
-            }
-
-            return sortSessions(updated);
-          });
+          applySessionUpdate(streamEvent.session);
           continue;
         }
 
@@ -1871,7 +2002,88 @@ function App() {
             <>
               <header className="chat-header">
                 <div className="chat-header-title">
-                  <h2>{activeSession.title}</h2>
+                  <div className="chat-header-title-row">
+                    {titleEditorOpen ? (
+                      <form
+                        className="chat-title-editor"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleTitleEditSave();
+                        }}
+                      >
+                        <input
+                          type="text"
+                          value={titleDraft}
+                          onChange={(event) => setTitleDraft(event.target.value)}
+                          placeholder="Session title"
+                          maxLength={120}
+                          disabled={titleSaving}
+                        />
+                        <div className="chat-title-editor-actions">
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={handleTitleEditCancel}
+                            disabled={titleSaving}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="ghost-button"
+                            disabled={titleSaving}
+                          >
+                            {titleSaving ? "Saving…" : "Save"}
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <h2>{activeSession.title}</h2>
+                        <div className="chat-header-title-actions">
+                          <button
+                            type="button"
+                            className="ghost-button chat-title-button"
+                            onClick={() => void handleTitleLockToggle()}
+                            disabled={titleLocking || titleSaving}
+                            aria-pressed={activeSession.titleLocked}
+                            aria-label={
+                              activeSession.titleLocked
+                                ? "Unlock session title"
+                                : "Lock session title"
+                            }
+                            title={
+                              activeSession.titleLocked
+                                ? "Unlock session title"
+                                : "Lock session title"
+                            }
+                          >
+                            {titleLocking
+                              ? "…"
+                              : activeSession.titleLocked
+                                ? "🔒"
+                                : "🔓"}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button chat-title-button"
+                            onClick={handleTitleEditStart}
+                            disabled={
+                              activeSession.titleLocked || titleSaving || titleLocking
+                            }
+                            aria-label="Edit session title"
+                            title={
+                              activeSession.titleLocked
+                                ? "Unlock the title to edit"
+                                : "Edit session title"
+                            }
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                   <p className="muted">
                     Updated{" "}
                     {sessionDateFormatter.format(
@@ -2160,11 +2372,7 @@ function App() {
         workspaceInfo={workspaceInfo}
         onClose={() => setWorkspaceModalOpen(false)}
         onWorkspaceUpdated={(updatedSession, info) => {
-          setSessions((previous) =>
-            previous.map((item) =>
-              item.id === updatedSession.id ? updatedSession : item,
-            ),
-          );
+          applySessionUpdate(updatedSession);
           if (activeSessionId === updatedSession.id) {
             setWorkspaceInfo(info);
           }

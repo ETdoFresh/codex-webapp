@@ -7,6 +7,8 @@ import type { ThreadItem } from "@openai/codex-sdk";
 import type IDatabase from "./interfaces/IDatabase";
 import type IWorkspace from "./interfaces/IWorkspace";
 import { workspaceManager } from "./workspaces";
+import { DEFAULT_SESSION_TITLE } from "./config/sessions";
+import { generateTitleFromContent } from "./services/titleService";
 import type {
   AttachmentRecord,
   MessageRecord,
@@ -44,7 +46,8 @@ const migrations: string[] = [
     title TEXT NOT NULL,
     codex_thread_id TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    title_locked INTEGER NOT NULL DEFAULT 0
   )
 `,
   `
@@ -120,6 +123,7 @@ class SQLiteDatabase implements IDatabase {
     codexThreadId: string | null;
     createdAt: string;
     updatedAt: string;
+    titleLocked: number;
   }>;
   private readonly upsertSessionWorkspaceStmt: Statement<{
     sessionId: string;
@@ -139,6 +143,11 @@ class SQLiteDatabase implements IDatabase {
   private readonly updateSessionThreadStmt: Statement<{
     id: string;
     codexThreadId: string | null;
+    updatedAt: string;
+  }>;
+  private readonly updateSessionTitleLockedStmt: Statement<{
+    id: string;
+    locked: number;
     updatedAt: string;
   }>;
   private readonly deleteSessionStmt: Statement<{ id: string }>;
@@ -193,6 +202,7 @@ class SQLiteDatabase implements IDatabase {
     this.db = new Database(databasePath);
     this.configure();
     this.runMigrations();
+    this.ensureSessionColumns();
     this.upsertSessionWorkspaceStmt = this.db.prepare(`
       INSERT OR REPLACE INTO session_workspaces (session_id, workspace_path)
       VALUES (@sessionId, @workspacePath)
@@ -203,8 +213,22 @@ class SQLiteDatabase implements IDatabase {
     `);
     this.initializeWorkspaceMappings();
     this.insertSessionStmt = this.db.prepare(`
-      INSERT INTO sessions (id, title, codex_thread_id, created_at, updated_at)
-      VALUES (@id, @title, @codexThreadId, @createdAt, @updatedAt)
+      INSERT INTO sessions (
+        id,
+        title,
+        codex_thread_id,
+        created_at,
+        updated_at,
+        title_locked
+      )
+      VALUES (
+        @id,
+        @title,
+        @codexThreadId,
+        @createdAt,
+        @updatedAt,
+        @titleLocked
+      )
     `);
     this.listSessionsStmt = this.db.prepare(`
       SELECT
@@ -213,7 +237,8 @@ class SQLiteDatabase implements IDatabase {
         s.codex_thread_id as codexThreadId,
         s.created_at as createdAt,
         s.updated_at as updatedAt,
-        COALESCE(sw.workspace_path, '') as workspacePath
+        COALESCE(sw.workspace_path, '') as workspacePath,
+        s.title_locked as titleLocked
       FROM sessions s
       LEFT JOIN session_workspaces sw ON sw.session_id = s.id
       ORDER BY s.updated_at DESC
@@ -225,7 +250,8 @@ class SQLiteDatabase implements IDatabase {
         s.codex_thread_id as codexThreadId,
         s.created_at as createdAt,
         s.updated_at as updatedAt,
-        COALESCE(sw.workspace_path, '') as workspacePath
+        COALESCE(sw.workspace_path, '') as workspacePath,
+        s.title_locked as titleLocked
       FROM sessions s
       LEFT JOIN session_workspaces sw ON sw.session_id = s.id
       WHERE s.id = @id
@@ -239,6 +265,12 @@ class SQLiteDatabase implements IDatabase {
     this.updateSessionThreadStmt = this.db.prepare(`
       UPDATE sessions
       SET codex_thread_id = @codexThreadId,
+          updated_at = @updatedAt
+      WHERE id = @id
+    `);
+    this.updateSessionTitleLockedStmt = this.db.prepare(`
+      UPDATE sessions
+      SET title_locked = @locked,
           updated_at = @updatedAt
       WHERE id = @id
     `);
@@ -345,6 +377,20 @@ class SQLiteDatabase implements IDatabase {
     `);
   }
 
+  private ensureSessionColumns(): void {
+    const columns = this.db
+      .prepare(`PRAGMA table_info(sessions)`)
+      .all() as Array<{ name: string }>;
+    const hasTitleLocked = columns.some(
+      (column) => column.name === "title_locked",
+    );
+    if (!hasTitleLocked) {
+      this.db.exec(
+        `ALTER TABLE sessions ADD COLUMN title_locked INTEGER NOT NULL DEFAULT 0`,
+      );
+    }
+  }
+
   private initializeWorkspaceMappings(): void {
     const selectSessionsStmt = this.db.prepare(
       `SELECT id FROM sessions`,
@@ -375,6 +421,7 @@ class SQLiteDatabase implements IDatabase {
   }
 
   private hydrateSessionRecord(record: SessionRecord): SessionRecord {
+    record.titleLocked = Boolean(record.titleLocked);
     const storedPath =
       record.workspacePath && record.workspacePath.trim().length > 0
         ? record.workspacePath
@@ -415,6 +462,7 @@ class SQLiteDatabase implements IDatabase {
       createdAt: now,
       updatedAt: now,
       workspacePath: "",
+      titleLocked: false,
     };
 
     this.insertSessionStmt.run({
@@ -423,6 +471,7 @@ class SQLiteDatabase implements IDatabase {
       codexThreadId: record.codexThreadId,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
+      titleLocked: record.titleLocked ? 1 : 0,
     });
 
     const workspacePath = this.workspace.registerSessionWorkspace(
@@ -457,6 +506,61 @@ class SQLiteDatabase implements IDatabase {
     const updatedAt = new Date().toISOString();
     this.updateSessionTitleStmt.run({ id, title, updatedAt });
     return { ...existing, title, updatedAt };
+  }
+
+  updateSessionTitleLocked(id: string, locked: boolean): SessionRecord | null {
+    const existing = this.getSession(id);
+    if (!existing) {
+      return null;
+    }
+
+    if (existing.titleLocked === locked) {
+      return existing;
+    }
+
+    const updatedAt = new Date().toISOString();
+    this.updateSessionTitleLockedStmt.run({
+      id,
+      locked: locked ? 1 : 0,
+      updatedAt,
+    });
+
+    return { ...existing, titleLocked: locked, updatedAt };
+  }
+
+  updateSessionTitleFromContent(
+    id: string,
+    contents: string,
+  ): SessionRecord | null {
+    const existing = this.getSession(id);
+    if (!existing) {
+      return null;
+    }
+
+    if (existing.titleLocked) {
+      return existing;
+    }
+
+    const suggestion = generateTitleFromContent(contents, {
+      fallback: existing.title,
+    });
+    const normalizedSuggestion = suggestion.trim();
+    if (normalizedSuggestion.length === 0) {
+      return existing;
+    }
+
+    if (normalizedSuggestion === existing.title) {
+      return existing;
+    }
+
+    const updatedAt = new Date().toISOString();
+    this.updateSessionTitleStmt.run({
+      id,
+      title: normalizedSuggestion,
+      updatedAt,
+    });
+
+    return { ...existing, title: normalizedSuggestion, updatedAt };
   }
 
   updateSessionThreadId(

@@ -137,6 +137,18 @@ const updateTitleSchema = z.object({
   title: titleSchema.optional()
 });
 
+const updateTitleLockSchema = z.object({
+  locked: z.boolean()
+});
+
+const autoTitleSchema = z.object({
+  contents: z
+    .string()
+    .trim()
+    .min(1, 'Conversation contents are required.')
+    .max(20000, 'Conversation contents exceed the maximum supported length.')
+});
+
 const filePathQuerySchema = z.object({
   path: z
     .string()
@@ -211,6 +223,44 @@ router.patch(
     const updated = database.updateSessionTitle(session.id, body.title);
     if (!updated) {
       res.status(500).json({ error: 'Unable to update session' });
+      return;
+    }
+
+    res.json({ session: toSessionResponse(updated) });
+  })
+);
+
+router.post(
+  '/api/sessions/:id/title/lock',
+  asyncHandler(async (req, res) => {
+    const session = findSessionOr404(req.params.id, res);
+    if (!session) {
+      return;
+    }
+
+    const body = updateTitleLockSchema.parse(req.body ?? {});
+    const updated = database.updateSessionTitleLocked(session.id, body.locked);
+    if (!updated) {
+      res.status(500).json({ error: 'Unable to update session lock state' });
+      return;
+    }
+
+    res.json({ session: toSessionResponse(updated) });
+  })
+);
+
+router.post(
+  '/api/sessions/:id/title/auto',
+  asyncHandler(async (req, res) => {
+    const session = findSessionOr404(req.params.id, res);
+    if (!session) {
+      return;
+    }
+
+    const body = autoTitleSchema.parse(req.body ?? {});
+    const updated = database.updateSessionTitleFromContent(session.id, body.contents);
+    if (!updated) {
+      res.status(500).json({ error: 'Unable to update session title' });
       return;
     }
 

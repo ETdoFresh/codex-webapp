@@ -19,6 +19,11 @@ interface IDatabase {
     id: string,
     workspacePath: string,
   ): SessionRecord | null;
+  updateSessionTitleLocked(id: string, locked: boolean): SessionRecord | null;
+  updateSessionTitleFromContent(
+    id: string,
+    contents: string,
+  ): SessionRecord | null;
   deleteSession(id: string): boolean;
   addMessage(
     sessionId: string,

@@ -126,7 +126,11 @@ export async function handleSessionMessageRequest(
   session.workspacePath = workspaceDirectory;
   const normalizedWorkspaceDirectory = workspaceDirectory.replace(/\\/g, "/");
 
-  if (session.title === DEFAULT_SESSION_TITLE && storedContent.length > 0) {
+  if (
+    !session.titleLocked &&
+    session.title === DEFAULT_SESSION_TITLE &&
+    storedContent.length > 0
+  ) {
     const inferredTitle =
       storedContent.length > 60
         ? `${storedContent.slice(0, 60).trim()}…`

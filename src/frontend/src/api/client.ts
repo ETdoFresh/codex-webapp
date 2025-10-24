@@ -286,6 +286,48 @@ export async function fetchSessionWorkspaceInfo(
   return data.workspace;
 }
 
+export async function updateSessionTitle(
+  sessionId: string,
+  title: string,
+): Promise<Session> {
+  const response = await request<{ session: Session }>(
+    `/api/sessions/${sessionId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    },
+  );
+  return response.session;
+}
+
+export async function setSessionTitleLock(
+  sessionId: string,
+  locked: boolean,
+): Promise<Session> {
+  const response = await request<{ session: Session }>(
+    `/api/sessions/${sessionId}/title/lock`,
+    {
+      method: "POST",
+      body: JSON.stringify({ locked }),
+    },
+  );
+  return response.session;
+}
+
+export async function autoUpdateSessionTitle(
+  sessionId: string,
+  contents: string,
+): Promise<Session> {
+  const response = await request<{ session: Session }>(
+    `/api/sessions/${sessionId}/title/auto`,
+    {
+      method: "POST",
+      body: JSON.stringify({ contents }),
+    },
+  );
+  return response.session;
+}
+
 export async function updateSessionWorkspacePath(
   sessionId: string,
   nextPath: string,

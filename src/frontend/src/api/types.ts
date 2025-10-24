@@ -5,6 +5,7 @@ export type Session = {
   createdAt: string;
   updatedAt: string;
   workspacePath: string;
+  titleLocked: boolean;
 };
 
 export type MessageRole = "system" | "user" | "assistant";

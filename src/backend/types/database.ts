@@ -7,6 +7,7 @@ export type SessionRecord = {
   createdAt: string;
   updatedAt: string;
   workspacePath: string;
+  titleLocked: boolean;
 };
 
 export type MessageRecord = {
