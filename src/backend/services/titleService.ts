@@ -1,14 +1,23 @@
 import { DEFAULT_SESSION_TITLE } from "../config/sessions";
+import { codexManager } from "../codexManager";
+import type { SessionRecord } from "../types/database";
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_TITLE_WORDS = 12;
 
+type AutoTitleMessage = {
+  role?: unknown;
+  content?: unknown;
+  attachments?: unknown;
+  items?: unknown;
+};
+
 const sanitizeLine = (line: string): string => {
   const withoutMarkdown = line
-    .replace(/^\s*[-*+#>\d.\)\(]+\s*/g, "")
+    .replace(/^[\s>*#\-\d.()]+/g, "")
     .replace(/[`*_~]/g, "")
     .replace(/\[(.*?)\]\((.*?)\)/g, "$1");
-  const withoutCodeFences = withoutMarkdown.replace(/```.*$/g, "");
+  const withoutCodeFences = withoutMarkdown.replace(/```[\s\S]*?```/g, " ");
   const condensedWhitespace = withoutCodeFences.replace(/\s+/g, " ");
   return condensedWhitespace.trim();
 };
@@ -28,65 +37,149 @@ const clampWords = (value: string): string => {
   return `${words.slice(0, MAX_TITLE_WORDS).join(" ")}…`;
 };
 
-const titleCase = (value: string): string => {
-  if (!value) {
-    return value;
-  }
-  return value
+const titleCase = (value: string): string =>
+  value
     .split(/\s+/)
-    .map((word) => {
-      if (word.length === 0) {
-        return word;
-      }
-      return word[0].toUpperCase() + word.slice(1);
-    })
+    .map((word) =>
+      word.length > 0 ? word[0].toUpperCase() + word.slice(1) : word,
+    )
     .join(" ");
+
+const clampTitle = (value: string, fallback: string): string => {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return fallback;
+  }
+  return clampLength(trimmed);
 };
 
-export function generateTitleFromContent(
-  contents: string,
-  options?: {
-    fallback?: string;
-  },
-): string {
-  const fallbackTitle = options?.fallback?.trim();
-  if (typeof contents !== "string" || contents.trim().length === 0) {
-    return fallbackTitle && fallbackTitle.length > 0
-      ? fallbackTitle
-      : DEFAULT_SESSION_TITLE;
+const extractLinesFromMessages = (messages: AutoTitleMessage[]): string[] => {
+  const lines: string[] = [];
+  for (const entry of messages) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const role =
+      typeof record.role === "string" && record.role.length > 0
+        ? record.role
+        : "user";
+    const content =
+      typeof record.content === "string" ? record.content.trim() : "";
+    if (content.length > 0) {
+      lines.push(`${role}: ${content}`);
+    }
+
+    if (Array.isArray(record.items)) {
+      for (const item of record.items) {
+        if (!item || typeof item !== "object") {
+          continue;
+        }
+        const itemRecord = item as Record<string, unknown>;
+        const type =
+          typeof itemRecord.type === "string" ? itemRecord.type : "item";
+        const textCandidate =
+          typeof itemRecord.text === "string"
+            ? itemRecord.text
+            : typeof itemRecord.summary === "string"
+              ? itemRecord.summary
+              : null;
+        if (textCandidate && textCandidate.trim().length > 0) {
+          lines.push(`${role} ${type}: ${textCandidate.trim()}`);
+        }
+      }
+    }
+
+    if (Array.isArray(record.attachments) && record.attachments.length > 0) {
+      const attachmentNames = record.attachments
+        .map((attachment) => {
+          if (!attachment || typeof attachment !== "object") {
+            return null;
+          }
+          const attachmentRecord = attachment as Record<string, unknown>;
+          if (
+            typeof attachmentRecord.filename === "string" &&
+            attachmentRecord.filename.length > 0
+          ) {
+            return attachmentRecord.filename;
+          }
+          return null;
+        })
+        .filter((name): name is string => Boolean(name));
+
+      if (attachmentNames.length > 0) {
+        lines.push(`${role} attachments: ${attachmentNames.join(", ")}`);
+      }
+    }
   }
 
-  const lines = contents
-    .split(/\r?\n/)
+  return lines;
+};
+
+const heuristicTitleFromMessages = (
+  messages: AutoTitleMessage[],
+  fallback: string,
+): string => {
+  const lines = extractLinesFromMessages(messages)
     .map((line) => sanitizeLine(line))
     .filter((line) => line.length > 0);
 
-  const userLines = lines
-    .filter((line) => /^user:\s*/i.test(line))
-    .map((line) => line.replace(/^user:\s*/i, ""))
-    .filter((line) => line.length > 0);
-
-  let candidate = userLines[userLines.length - 1];
-  if (!candidate) {
-    candidate = lines[0];
+  if (lines.length === 0) {
+    return fallback;
   }
 
-  if (!candidate) {
-    return fallbackTitle && fallbackTitle.length > 0
-      ? fallbackTitle
-      : DEFAULT_SESSION_TITLE;
+  const userLines = lines.filter((line) => /^user:\s*/i.test(line));
+  let candidate = userLines.length > 0
+    ? userLines[userLines.length - 1].replace(/^user:\s*/i, "")
+    : lines[lines.length - 1] ?? lines[0];
+
+  if (!candidate || candidate.trim().length === 0) {
+    return fallback;
   }
 
   const wordsClamped = clampWords(candidate);
   const lengthClamped = clampLength(wordsClamped);
   const normalized = lengthClamped.replace(/\s+/g, " ").trim();
 
-  if (!normalized || normalized.length === 0) {
-    return fallbackTitle && fallbackTitle.length > 0
-      ? fallbackTitle
-      : DEFAULT_SESSION_TITLE;
+  if (normalized.length === 0) {
+    return fallback;
   }
 
-  const titled = titleCase(normalized);
-  return titled || DEFAULT_SESSION_TITLE;
+  return titleCase(normalized);
+};
+
+export async function generateSessionTitle(
+  session: SessionRecord,
+  messages: unknown[],
+  options?: { fallback?: string },
+): Promise<string> {
+  const fallbackTitle =
+    options?.fallback?.trim() ?? session.title ?? DEFAULT_SESSION_TITLE;
+
+  const safeMessages = Array.isArray(messages)
+    ? (messages as AutoTitleMessage[])
+    : [];
+  const serialized = safeMessages.length > 0
+    ? JSON.stringify(safeMessages, null, 2)
+    : "";
+
+  if (serialized.length > 0) {
+    try {
+      const codexSuggestion = await codexManager.generateTitleSuggestion(
+        session,
+        serialized,
+      );
+      if (codexSuggestion && codexSuggestion.trim().length > 0) {
+        return clampTitle(codexSuggestion, fallbackTitle);
+      }
+    } catch (error) {
+      console.warn(
+        `[codex-webapp] Title suggestion via Codex failed for session ${session.id}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  const heuristic = heuristicTitleFromMessages(safeMessages, fallbackTitle);
+  return clampTitle(heuristic, fallbackTitle);
 }

@@ -25,6 +25,7 @@ import {
   updateSessionTitle,
   setSessionTitleLock,
   autoUpdateSessionTitle,
+  type AutoTitleMessagePayload,
 } from "./api/client";
 import type {
   AppMeta,
@@ -150,33 +151,19 @@ const truncatePreview = (value: string): string => {
   return `${trimmed.slice(0, STREAMING_PREVIEW_MAX_LENGTH).trimEnd()}…`;
 };
 
-const roleLabel = (role: Message["role"]): string => {
-  switch (role) {
-    case "assistant":
-      return "Assistant";
-    case "system":
-      return "System";
-    default:
-      return "User";
-  }
-};
-
-const buildConversationContents = (messages: Message[]): string =>
-  messages
-    .map((message) => {
-      const label = roleLabel(message.role);
-      const content = (message.content ?? "").trim();
-      const attachments = message.attachments ?? [];
-      const attachmentNote =
-        attachments.length > 0
-          ? ` [Attachments: ${attachments
-              .map((attachment) => attachment.filename)
-              .join(", ")}]`
-          : "";
-      const body = content.length > 0 ? content : "(No content)";
-      return `${label}: ${body}${attachmentNote}`;
-    })
-    .join("\n");
+const buildAutoTitleMessages = (
+  messages: Message[],
+): AutoTitleMessagePayload[] =>
+  messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+    attachments: (message.attachments ?? []).map((attachment) => ({
+      filename: attachment.filename,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+    })),
+    items: message.items ?? [],
+  }));
 
 const formatTitleCase = (value: string): string =>
   value
@@ -1314,13 +1301,25 @@ function App() {
           if (fallbackContent.trim().length > 0) {
             return truncatePreview(fallbackContent);
           }
-          for (const rawItem of messageItems) {
-            const preview = buildStreamingPreview(rawItem as TurnItem);
+
+          const previews: string[] = [];
+          for (let index = messageItems.length - 1; index >= 0; index -= 1) {
+            const preview = buildStreamingPreview(
+              messageItems[index] as TurnItem,
+            );
             if (preview) {
-              return preview;
+              previews.push(preview);
+            }
+            if (previews.length >= 3) {
+              break;
             }
           }
-          return null;
+
+          if (previews.length === 0) {
+            return null;
+          }
+
+          return previews.reverse().join("\n");
         })()
       : null;
     const detailedItemsBlock = hasDetailedItems ? (
@@ -1722,12 +1721,10 @@ function App() {
                 !titleEditingRef.current &&
                 nextMessages.length > 0
               ) {
-                const conversationContents = buildConversationContents(
-                  nextMessages,
-                );
+                const autoTitleMessages = buildAutoTitleMessages(nextMessages);
                 void autoUpdateSessionTitle(
                   streamEvent.session.id,
-                  conversationContents,
+                  autoTitleMessages,
                 )
                   .then((updatedSession) => {
                     applySessionUpdate(updatedSession);

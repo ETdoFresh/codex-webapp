@@ -6,6 +6,10 @@ interface IAgent {
   runTurnStreamed(session: SessionRecord, input: string): Promise<RunTurnStreamedResult>;
   forgetSession(sessionId: string): void;
   clearThreadCache(): void;
+  generateTitleSuggestion(
+    session: SessionRecord,
+    conversationJson: string,
+  ): Promise<string | null>;
 }
 
 export default IAgent;

@@ -142,11 +142,10 @@ const updateTitleLockSchema = z.object({
 });
 
 const autoTitleSchema = z.object({
-  contents: z
-    .string()
-    .trim()
-    .min(1, 'Conversation contents are required.')
-    .max(20000, 'Conversation contents exceed the maximum supported length.')
+  messages: z
+    .array(z.any())
+    .min(1, 'Conversation messages are required.')
+    .max(400, 'Conversation is too long to summarize automatically.'),
 });
 
 const filePathQuerySchema = z.object({
@@ -258,7 +257,10 @@ router.post(
     }
 
     const body = autoTitleSchema.parse(req.body ?? {});
-    const updated = database.updateSessionTitleFromContent(session.id, body.contents);
+    const updated = await database.updateSessionTitleFromMessages(
+      session.id,
+      body.messages,
+    );
     if (!updated) {
       res.status(500).json({ error: 'Unable to update session title' });
       return;

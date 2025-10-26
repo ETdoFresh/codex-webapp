@@ -314,15 +314,22 @@ export async function setSessionTitleLock(
   return response.session;
 }
 
+export type AutoTitleMessagePayload = {
+  role: string;
+  content?: string;
+  attachments?: Array<{ filename?: string; mimeType?: string; size?: number }>;
+  items?: unknown[];
+};
+
 export async function autoUpdateSessionTitle(
   sessionId: string,
-  contents: string,
+  messages: AutoTitleMessagePayload[],
 ): Promise<Session> {
   const response = await request<{ session: Session }>(
     `/api/sessions/${sessionId}/title/auto`,
     {
       method: "POST",
-      body: JSON.stringify({ contents }),
+      body: JSON.stringify({ messages }),
     },
   );
   return response.session;

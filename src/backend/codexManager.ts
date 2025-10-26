@@ -128,6 +128,56 @@ class CodexManager implements IAgent {
   clearThreadCache() {
     this.threads.clear();
   }
+
+  async generateTitleSuggestion(
+    session: SessionRecord,
+    conversationJson: string,
+  ): Promise<string | null> {
+    let codexInstance: Codex;
+    try {
+      codexInstance = await this.getCodex();
+    } catch (error) {
+      console.warn(
+        `[codex-webapp] Codex unavailable for title suggestion in session ${session.id}:`,
+        error instanceof Error ? error.message : error,
+      );
+      return null;
+    }
+
+    const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+    const thread = codexInstance.startThread(
+      this.createThreadOptions(workspaceDirectory),
+    );
+
+    const prompt = [
+      "You generate short, descriptive titles for conversations.",
+      "Respond with a concise title (3-5 words), no quotation marks, no extra commentary.",
+      "Conversation JSON:",
+      conversationJson,
+    ].join("\n\n");
+
+    try {
+      const result = await thread.run(prompt);
+      const final = (result.finalResponse ?? "").trim();
+      if (!final) {
+        return null;
+      }
+
+      const firstLine = final.split(/\r?\n/)[0]?.trim() ?? "";
+      if (!firstLine) {
+        return null;
+      }
+
+      const cleaned = firstLine.replace(/^['"\s]+|['"\s]+$/g, "");
+      return cleaned.length > 0 ? cleaned : null;
+    } catch (error) {
+      console.warn(
+        `[codex-webapp] Failed to generate title suggestion for session ${session.id}:`,
+        error instanceof Error ? error.message : error,
+      );
+      return null;
+    }
+  }
 }
 
 export const codexManager: IAgent = new CodexManager();

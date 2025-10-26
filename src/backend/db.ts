@@ -8,7 +8,7 @@ import type IDatabase from "./interfaces/IDatabase";
 import type IWorkspace from "./interfaces/IWorkspace";
 import { workspaceManager } from "./workspaces";
 import { DEFAULT_SESSION_TITLE } from "./config/sessions";
-import { generateTitleFromContent } from "./services/titleService";
+import { generateSessionTitle } from "./services/titleService";
 import type {
   AttachmentRecord,
   MessageRecord,
@@ -528,10 +528,10 @@ class SQLiteDatabase implements IDatabase {
     return { ...existing, titleLocked: locked, updatedAt };
   }
 
-  updateSessionTitleFromContent(
+  async updateSessionTitleFromMessages(
     id: string,
-    contents: string,
-  ): SessionRecord | null {
+    messages: unknown[],
+  ): Promise<SessionRecord | null> {
     const existing = this.getSession(id);
     if (!existing) {
       return null;
@@ -541,7 +541,7 @@ class SQLiteDatabase implements IDatabase {
       return existing;
     }
 
-    const suggestion = generateTitleFromContent(contents, {
+    const suggestion = await generateSessionTitle(existing, messages, {
       fallback: existing.title,
     });
     const normalizedSuggestion = suggestion.trim();

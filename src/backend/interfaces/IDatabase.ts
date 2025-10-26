@@ -20,10 +20,10 @@ interface IDatabase {
     workspacePath: string,
   ): SessionRecord | null;
   updateSessionTitleLocked(id: string, locked: boolean): SessionRecord | null;
-  updateSessionTitleFromContent(
+  updateSessionTitleFromMessages(
     id: string,
-    contents: string,
-  ): SessionRecord | null;
+    messages: unknown[],
+  ): Promise<SessionRecord | null>;
   deleteSession(id: string): boolean;
   addMessage(
     sessionId: string,
