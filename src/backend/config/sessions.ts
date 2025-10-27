@@ -1,1 +1,1 @@
-export const DEFAULT_SESSION_TITLE = 'New Chat';
+export const DEFAULT_SESSION_TITLE = 'New Session';

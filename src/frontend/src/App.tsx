@@ -40,7 +40,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import WorkspaceRootModal from "./components/WorkspaceRootModal";
 
-const DEFAULT_SESSION_TITLE = "New Chat";
+const DEFAULT_SESSION_TITLE = "New Session";
 const THEME_STORAGE_KEY = "codex:theme";
 const LAST_PROVIDER_STORAGE_KEY = "codex:last-provider";
 const LAST_MODEL_STORAGE_KEY = "codex:last-model";
@@ -2181,10 +2181,9 @@ function App() {
     <div className="app">
       <header className="app-header">
         <div>
-          <h1>Codex Chat Studio</h1>
+          <h1>webedt (wĕb ĕd′-ĭt)</h1>
           <p className="muted">
-            Multi-session workspace backed by the Codex SDK and persistent
-            history
+            Multi-session workspace with persistent history and full-stack tools
           </p>
         </div>
         <div className="header-actions">
@@ -2210,7 +2209,7 @@ function App() {
               onClick={() => void handleCreateSession()}
               disabled={creatingSession}
             >
-              {creatingSession ? "Creating…" : "New Chat"}
+              {creatingSession ? "Creating…" : "New Session"}
             </button>
           </div>
 
@@ -2220,7 +2219,7 @@ function App() {
             <div className="sidebar-empty">
               <p className="muted">No sessions yet.</p>
               <button type="button" onClick={() => void handleCreateSession()}>
-                Start your first chat
+                Start your first session
               </button>
             </div>
           ) : (
@@ -2381,7 +2380,7 @@ function App() {
                   <div
                     className="chat-view-toggle"
                     role="group"
-                    aria-label="Chat display mode"
+                    aria-label="Session display mode"
                   >
                     <button
                       type="button"
@@ -2391,7 +2390,7 @@ function App() {
                       onClick={() => setChatViewMode("formatted")}
                       aria-pressed={chatViewMode === "formatted"}
                     >
-                      Chat Output
+                      Session Output
                     </button>
                     <button
                       type="button"
@@ -2436,7 +2435,7 @@ function App() {
                 ) : isRawView ? (
                   loadingMessages ? (
                     <div className="message-placeholder">
-                      Loading conversation…
+                      Loading session…
                     </div>
                   ) : (
                     <pre
@@ -2628,7 +2627,7 @@ function App() {
             </>
           ) : (
             <div className="empty-chat">
-              <p>Select a session or start a new chat to begin.</p>
+              <p>Select a session or start a new session to begin.</p>
               <button type="button" onClick={() => void handleCreateSession()}>
                 Create Session
               </button>

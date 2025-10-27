@@ -105,7 +105,7 @@ function WorkspaceRootModal({
   const loadPath = useCallback(
     async (pathToLoad: string) => {
       if (!sessionId) {
-        setListingError("Select a chat session before choosing a workspace.");
+        setListingError("Select a session before choosing a workspace.");
         return;
       }
 
@@ -147,7 +147,7 @@ function WorkspaceRootModal({
     }
 
     if (!sessionId) {
-      setListingError("Select a chat session to choose a workspace.");
+      setListingError("Select a session to choose a workspace.");
       setListing(null);
       return;
     }
@@ -210,7 +210,7 @@ function WorkspaceRootModal({
     }
 
     if (!sessionId) {
-      setSubmitError("Select a chat session before choosing a workspace.");
+      setSubmitError("Select a session before choosing a workspace.");
       return;
     }
 
@@ -267,7 +267,7 @@ function WorkspaceRootModal({
               </p>
             ) : (
               <p className="workspace-modal-subtitle">
-                Select a chat session to choose a workspace.
+                Select a session to choose a workspace.
               </p>
             )}
           </div>

@@ -354,7 +354,7 @@ const FileEditorPanel = ({ sessionId }: FileEditorPanelProps) => {
           <p className="file-editor-muted">Loading files…</p>
         ) : files.length === 0 ? (
           <p className="file-editor-muted">
-            No files yet. Generate or upload files through the chat agent to start editing.
+            No files yet. Generate or upload files through the coding assistant to start editing.
           </p>
         ) : (
           <ul className="file-editor-list">
