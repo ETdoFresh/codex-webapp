@@ -92,6 +92,8 @@ export type PostMessageStreamEvent =
     };
 
 export type AppMeta = {
+  provider: "CodexSDK" | "ClaudeCodeSDK" | "GeminiSDK";
+  availableProviders: Array<"CodexSDK" | "ClaudeCodeSDK" | "GeminiSDK">;
   model: string;
   reasoningEffort: "low" | "medium" | "high";
   availableModels: string[];

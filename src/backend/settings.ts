@@ -1,6 +1,9 @@
 export type CodexReasoningEffort = 'low' | 'medium' | 'high';
+export type CodexProvider = 'CodexSDK' | 'ClaudeCodeSDK' | 'GeminiSDK';
 
 type CodexMeta = {
+  provider: CodexProvider;
+  availableProviders: CodexProvider[];
   model: string;
   reasoningEffort: CodexReasoningEffort;
   availableModels: string[];
@@ -25,6 +28,17 @@ const availableModels = Array.from(
   new Set([...(parseList(process.env.CODEX_MODEL_OPTIONS)), defaultModel, ...fallbackModels])
 );
 
+const allowedProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK', 'GeminiSDK'];
+const fallbackProviders: CodexProvider[] = ['CodexSDK'];
+const availableProviders = (() => {
+  const configured = parseList(process.env.CODEX_PROVIDER_OPTIONS)
+    .map((value) => value as CodexProvider)
+    .filter((value): value is CodexProvider => allowedProviders.includes(value));
+
+  const combined = new Set<CodexProvider>([...fallbackProviders, ...configured]);
+  return Array.from(combined);
+})();
+
 const allowedReasoningEfforts: CodexReasoningEffort[] = ['low', 'medium', 'high'];
 const availableReasoningEfforts = (() => {
   const configured = parseList(process.env.CODEX_REASONING_EFFORT_OPTIONS);
@@ -48,10 +62,20 @@ const defaultReasoningEffort = (() => {
   return value && availableReasoningEfforts.includes(value) ? value : 'medium';
 })();
 
+const defaultProvider = (() => {
+  const value = process.env.CODEX_PROVIDER as CodexProvider | undefined;
+  return value && availableProviders.includes(value) ? value : fallbackProviders[0];
+})();
+
 let currentModel = availableModels.includes(defaultModel) ? defaultModel : availableModels[0];
 let currentReasoningEffort = defaultReasoningEffort;
+let currentProvider = availableProviders.includes(defaultProvider)
+  ? defaultProvider
+  : availableProviders[0];
 
 export const getCodexMeta = (): CodexMeta => ({
+  provider: currentProvider,
+  availableProviders,
   model: currentModel,
   reasoningEffort: currentReasoningEffort,
   availableModels,
@@ -61,13 +85,16 @@ export const getCodexMeta = (): CodexMeta => ({
 export const updateCodexMeta = (updates: {
   model?: string;
   reasoningEffort?: CodexReasoningEffort;
+  provider?: CodexProvider;
 }): {
   meta: CodexMeta;
   modelChanged: boolean;
   reasoningChanged: boolean;
+  providerChanged: boolean;
 } => {
   let modelChanged = false;
   let reasoningChanged = false;
+  let providerChanged = false;
 
   if (typeof updates.model === 'string') {
     const nextModel = updates.model.trim();
@@ -95,9 +122,23 @@ export const updateCodexMeta = (updates: {
     }
   }
 
+  if (typeof updates.provider === 'string') {
+    const nextProvider = updates.provider;
+    if (!availableProviders.includes(nextProvider)) {
+      throw new Error(`Unsupported provider: ${updates.provider}`);
+    }
+
+    if (nextProvider !== currentProvider) {
+      currentProvider = nextProvider;
+      process.env.CODEX_PROVIDER = nextProvider;
+      providerChanged = true;
+    }
+  }
+
   return {
     meta: getCodexMeta(),
     modelChanged,
-    reasoningChanged
+    reasoningChanged,
+    providerChanged
   };
 };

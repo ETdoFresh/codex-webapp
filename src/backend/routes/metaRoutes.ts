@@ -12,11 +12,18 @@ const metaUpdateSchema = z
       .trim()
       .min(1)
       .optional(),
-    reasoningEffort: z.enum(['low', 'medium', 'high']).optional()
+    reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
+    provider: z.enum(['CodexSDK', 'ClaudeCodeSDK', 'GeminiSDK']).optional()
   })
-  .refine((value) => value.model !== undefined || value.reasoningEffort !== undefined, {
-    message: 'Provide a model or reasoningEffort to update.'
-  });
+  .refine(
+    (value) =>
+      value.model !== undefined ||
+      value.reasoningEffort !== undefined ||
+      value.provider !== undefined,
+    {
+      message: 'Provide a model, reasoningEffort, or provider to update.'
+    }
+  );
 
 router.get('/api/meta', (_req: Request, res: Response) => {
   res.json(getCodexMeta());
@@ -34,8 +41,8 @@ router.patch('/api/meta', (req: Request, res: Response) => {
   }
 
   try {
-    const { meta, modelChanged } = updateCodexMeta(body.data);
-    if (modelChanged) {
+    const { meta, modelChanged, providerChanged } = updateCodexMeta(body.data);
+    if (modelChanged || providerChanged) {
       codexManager.clearThreadCache();
     }
     res.json(meta);

@@ -87,14 +87,43 @@ const normalizeReasoningEffortList = (
   return deduped.size > 0 ? Array.from(deduped) : ["low", "medium", "high"];
 };
 
+const normalizeProvider = (value: string | undefined): AppMeta["provider"] => {
+  if (
+    value === "CodexSDK" ||
+    value === "ClaudeCodeSDK" ||
+    value === "GeminiSDK"
+  ) {
+    return value;
+  }
+  return "CodexSDK";
+};
+
+const normalizeProviderList = (
+  values: string[] | undefined,
+): AppMeta["provider"][] => {
+  if (!Array.isArray(values)) {
+    return ["CodexSDK"];
+  }
+
+  const deduped = new Set<AppMeta["provider"]>();
+  for (const value of values) {
+    deduped.add(normalizeProvider(value));
+  }
+
+  return deduped.size > 0 ? Array.from(deduped) : ["CodexSDK"];
+};
+
 export async function fetchMeta(): Promise<AppMeta> {
   const data = await request<{
+    provider: string;
+    availableProviders: string[];
     model: string;
     reasoningEffort: string;
     availableModels: string[];
     availableReasoningEfforts: string[];
   }>("/api/meta");
 
+  const availableProviders = normalizeProviderList(data.availableProviders);
   const availableReasoningEfforts = normalizeReasoningEffortList(
     data.availableReasoningEfforts,
   );
@@ -114,7 +143,14 @@ export async function fetchMeta(): Promise<AppMeta> {
     ? data.model
     : (availableModels[0] ?? "gpt-5-codex");
 
+  const providerCandidate = normalizeProvider(data.provider);
+  const provider = availableProviders.includes(providerCandidate)
+    ? providerCandidate
+    : availableProviders[0] ?? "CodexSDK";
+
   return {
+    provider,
+    availableProviders,
     model,
     reasoningEffort: normalizeReasoningEffort(data.reasoningEffort),
     availableModels,
@@ -125,8 +161,11 @@ export async function fetchMeta(): Promise<AppMeta> {
 export async function updateMeta(payload: {
   model?: string;
   reasoningEffort?: AppMeta["reasoningEffort"];
+  provider?: AppMeta["provider"];
 }): Promise<AppMeta> {
   const data = await request<{
+    provider: string;
+    availableProviders: string[];
     model: string;
     reasoningEffort: string;
     availableModels: string[];
@@ -136,6 +175,7 @@ export async function updateMeta(payload: {
     body: JSON.stringify(payload),
   });
 
+  const availableProviders = normalizeProviderList(data.availableProviders);
   const availableReasoningEfforts = normalizeReasoningEffortList(
     data.availableReasoningEfforts,
   );
@@ -155,7 +195,14 @@ export async function updateMeta(payload: {
     ? data.model
     : (availableModels[0] ?? "gpt-5-codex");
 
+  const providerCandidate = normalizeProvider(data.provider);
+  const provider = availableProviders.includes(providerCandidate)
+    ? providerCandidate
+    : availableProviders[0] ?? "CodexSDK";
+
   return {
+    provider,
+    availableProviders,
     model,
     reasoningEffort: normalizeReasoningEffort(data.reasoningEffort),
     availableModels,

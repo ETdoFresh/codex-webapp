@@ -42,13 +42,49 @@ import WorkspaceRootModal from "./components/WorkspaceRootModal";
 
 const DEFAULT_SESSION_TITLE = "New Chat";
 const THEME_STORAGE_KEY = "codex:theme";
+const LAST_PROVIDER_STORAGE_KEY = "codex:last-provider";
+const LAST_MODEL_STORAGE_KEY = "codex:last-model";
+const LAST_REASONING_STORAGE_KEY = "codex:last-reasoning";
 
 const FALLBACK_MODELS = ["gpt-5-codex", "gpt-5"];
+const FALLBACK_PROVIDERS: AppMeta["provider"][] = ["CodexSDK"];
 const FALLBACK_REASONING: AppMeta["reasoningEffort"][] = [
   "low",
   "medium",
   "high",
 ];
+
+const safeGetLocalStorageItem = (key: string): string | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch (_error) {
+    return null;
+  }
+};
+
+const safeSetLocalStorageItem = (key: string, value: string) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (_error) {
+    // Ignore quota/security errors; fallback to defaults next load.
+  }
+};
+
+const isProviderValue = (value: string | null): value is AppMeta["provider"] =>
+  value === "CodexSDK" || value === "ClaudeCodeSDK" || value === "GeminiSDK";
+
+const isReasoningValue = (
+  value: string | null,
+): value is AppMeta["reasoningEffort"] =>
+  value === "low" || value === "medium" || value === "high";
 
 type Theme = "light" | "dark";
 
@@ -269,6 +305,15 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
   const titleEditingRef = useRef(false);
+
+  const persistMetaPreferences = useCallback((nextMeta: AppMeta) => {
+    safeSetLocalStorageItem(LAST_PROVIDER_STORAGE_KEY, nextMeta.provider);
+    safeSetLocalStorageItem(LAST_MODEL_STORAGE_KEY, nextMeta.model);
+    safeSetLocalStorageItem(
+      LAST_REASONING_STORAGE_KEY,
+      nextMeta.reasoningEffort,
+    );
+  }, []);
 
   const toggleItemExpansion = useCallback((entryKey: string) => {
     setExpandedItemKeys((previous) => {
@@ -593,8 +638,82 @@ function App() {
     const loadMeta = async () => {
       try {
         const settings = await fetchMeta();
-        if (!canceled) {
-          setMeta(settings);
+        if (canceled) {
+          return;
+        }
+
+        const storedProviderRaw = safeGetLocalStorageItem(
+          LAST_PROVIDER_STORAGE_KEY,
+        );
+        const storedProvider =
+          isProviderValue(storedProviderRaw) &&
+          settings.availableProviders.includes(storedProviderRaw)
+            ? storedProviderRaw
+            : null;
+
+        const storedModelRaw = safeGetLocalStorageItem(
+          LAST_MODEL_STORAGE_KEY,
+        );
+        const storedModel =
+          storedModelRaw && settings.availableModels.includes(storedModelRaw)
+            ? storedModelRaw
+            : null;
+
+        const storedReasoningRaw = safeGetLocalStorageItem(
+          LAST_REASONING_STORAGE_KEY,
+        );
+        const storedReasoning =
+          isReasoningValue(storedReasoningRaw) &&
+          settings.availableReasoningEfforts.includes(storedReasoningRaw)
+            ? storedReasoningRaw
+            : null;
+
+        const updates: Partial<{
+          provider: AppMeta["provider"];
+          model: string;
+          reasoningEffort: AppMeta["reasoningEffort"];
+        }> = {};
+
+        if (storedProvider && storedProvider !== settings.provider) {
+          updates.provider = storedProvider;
+        }
+
+        if (storedModel && storedModel !== settings.model) {
+          updates.model = storedModel;
+        }
+
+        if (storedReasoning && storedReasoning !== settings.reasoningEffort) {
+          updates.reasoningEffort = storedReasoning;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          if (canceled) {
+            return;
+          }
+
+          setUpdatingMeta(true);
+          try {
+            const updated = await updateMeta(updates);
+            if (!canceled) {
+              setMeta(updated);
+              persistMetaPreferences(updated);
+            }
+          } catch (error) {
+            console.warn("Failed to apply stored Codex preferences", error);
+            if (!canceled) {
+              setMeta(settings);
+              persistMetaPreferences(settings);
+            }
+          } finally {
+            if (!canceled) {
+              setUpdatingMeta(false);
+            }
+          }
+        } else {
+          if (!canceled) {
+            persistMetaPreferences(settings);
+            setMeta(settings);
+          }
         }
       } catch (error) {
         console.warn("Failed to load application metadata", error);
@@ -606,7 +725,7 @@ function App() {
     return () => {
       canceled = true;
     };
-  }, []);
+  }, [persistMetaPreferences]);
 
   useEffect(() => {
     titleEditingRef.current = titleEditorOpen;
@@ -902,11 +1021,45 @@ function App() {
     void updateMeta({ model: nextModel })
       .then((updated) => {
         setMeta(updated);
+        persistMetaPreferences(updated);
       })
       .catch((error) => {
         console.error("Failed to update model setting", error);
         setMeta(previousMeta);
         setErrorNotice("Unable to update model preference. Please try again.");
+        persistMetaPreferences(previousMeta);
+      })
+      .finally(() => {
+        setUpdatingMeta(false);
+      });
+  };
+
+  const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    if (!meta || updatingMeta) {
+      return;
+    }
+
+    const nextProvider = event.target.value as AppMeta["provider"];
+    if (nextProvider === meta.provider) {
+      return;
+    }
+
+    const previousMeta = meta;
+    setMeta({ ...meta, provider: nextProvider });
+    setUpdatingMeta(true);
+
+    void updateMeta({ provider: nextProvider })
+      .then((updated) => {
+        setMeta(updated);
+        persistMetaPreferences(updated);
+      })
+      .catch((error) => {
+        console.error("Failed to update provider setting", error);
+        setMeta(previousMeta);
+        setErrorNotice(
+          "Unable to update provider preference. Please try again.",
+        );
+        persistMetaPreferences(previousMeta);
       })
       .finally(() => {
         setUpdatingMeta(false);
@@ -1617,11 +1770,13 @@ function App() {
     void updateMeta({ reasoningEffort: nextEffort })
       .then((updated) => {
         setMeta(updated);
+        persistMetaPreferences(updated);
       })
       .catch((error) => {
         console.error("Failed to update reasoning effort", error);
         setMeta(previousMeta);
         setErrorNotice("Unable to update reasoning effort. Please try again.");
+        persistMetaPreferences(previousMeta);
       })
       .finally(() => {
         setUpdatingMeta(false);
@@ -2399,6 +2554,23 @@ function App() {
                   <div className="composer-meta">
                     {meta ? (
                       <>
+                        <label className="composer-meta-field">
+                          <span>Provider</span>
+                          <select
+                            value={meta.provider}
+                            onChange={handleProviderChange}
+                            disabled={updatingMeta}
+                          >
+                            {(meta.availableProviders.length > 0
+                              ? meta.availableProviders
+                              : FALLBACK_PROVIDERS
+                            ).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         <label className="composer-meta-field">
                           <span>Model</span>
                           <select
