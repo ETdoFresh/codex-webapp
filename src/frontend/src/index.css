@@ -2255,7 +2255,7 @@ textarea {
   text-transform: uppercase;
   font-size: 0.8rem;
   border: 1px solid transparent;
-  box-shadow: 0 12px 24px rgba(148, 163, 184, 0.35);
+  box-shadow: none;
 }
 
 .status-healthy {
