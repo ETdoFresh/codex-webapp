@@ -2033,13 +2033,6 @@ function App() {
           </p>
         </div>
         <div className="header-actions">
-          <div
-            className="workspace-current workspace-header-summary"
-            title={workspacePathDisplay.title}
-          >
-            <span className="workspace-current-label">Workspace</span>
-            <code>{workspacePathDisplay.display}</code>
-          </div>
           <button
             type="button"
             className="theme-toggle"

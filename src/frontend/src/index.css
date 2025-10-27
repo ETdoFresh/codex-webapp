@@ -492,10 +492,6 @@ textarea {
   flex-wrap: wrap;
 }
 
-.workspace-header-summary {
-  max-width: clamp(240px, 30vw, 420px);
-}
-
 .workspace-current {
   display: flex;
   align-items: center;
