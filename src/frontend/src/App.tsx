@@ -2200,27 +2200,29 @@ function App() {
                   </p>
                 </div>
                 <div className="chat-header-tools">
-                  <div
-                    className="workspace-current"
-                    title={workspacePathDisplay.title}
-                  >
-                    <span className="workspace-current-label">Workspace</span>
-                    <code>{workspacePathDisplay.display}</code>
+                  <div className="workspace-controls">
+                    <div
+                      className="workspace-current"
+                      title={workspacePathDisplay.title}
+                    >
+                      <span className="workspace-current-label">Workspace</span>
+                      <code>{workspacePathDisplay.display}</code>
+                    </div>
+                    <button
+                      type="button"
+                      className="ghost-button workspace-button"
+                      onClick={() => {
+                        if (!workspaceInfo) {
+                          void refreshWorkspaceInfo();
+                        }
+                        setWorkspaceModalOpen(true);
+                      }}
+                      aria-label="Change workspace directory"
+                      title="Change workspace directory"
+                    >
+                      Workspace…
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="ghost-button workspace-button"
-                    onClick={() => {
-                      if (!workspaceInfo) {
-                        void refreshWorkspaceInfo();
-                      }
-                      setWorkspaceModalOpen(true);
-                    }}
-                    aria-label="Change workspace directory"
-                    title="Change workspace directory"
-                  >
-                    Workspace…
-                  </button>
                   <div
                     className="chat-view-toggle"
                     role="group"
