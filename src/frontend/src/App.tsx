@@ -428,32 +428,47 @@ function App() {
 
     const original = effectivePath;
     const normalized = original.replace(/\\/g, "/");
-    if (normalized.length <= 48) {
+    const MAX_DISPLAY_LENGTH = 32;
+    if (normalized.length <= MAX_DISPLAY_LENGTH) {
       return { display: normalized, title: original } as const;
     }
 
-    const segments = normalized
-      .split("/")
-      .filter((segment) => segment.length > 0);
+    const lastSlashIndex = normalized.lastIndexOf("/");
 
-    if (segments.length === 0) {
-      return { display: "/", title: original } as const;
+    if (lastSlashIndex === -1) {
+      const tailLength = MAX_DISPLAY_LENGTH - 1;
+      return {
+        display: `…${normalized.slice(-tailLength)}`,
+        title: original,
+      } as const;
     }
 
-    if (segments.length <= 2) {
-      const start = normalized.slice(0, 12);
-      const end = normalized.slice(-24);
-      return { display: `${start}…${end}`, title: original } as const;
+    const secondLastSlashIndex = normalized.lastIndexOf("/", lastSlashIndex - 1);
+    const tailStartIndex = secondLastSlashIndex >= 0 ? secondLastSlashIndex : lastSlashIndex;
+    let tail = normalized.slice(tailStartIndex);
+
+    if (tail.length >= MAX_DISPLAY_LENGTH - 1) {
+      return {
+        display: `…${normalized.slice(-(MAX_DISPLAY_LENGTH - 1))}`,
+        title: original,
+      } as const;
     }
 
-    const hasDrive = /^[A-Za-z]:$/.test(segments[0]);
-    const prefix = hasDrive
-      ? `${segments[0]}/`
-      : normalized.startsWith("/")
-        ? "/"
-        : `${segments[0]}/`;
-    const tail = segments.slice(-2).join("/");
-    return { display: `${prefix}…/${tail}`, title: original } as const;
+    const headLength = Math.max(1, MAX_DISPLAY_LENGTH - tail.length - 1); // reserve one char for ellipsis
+    let head = normalized.slice(0, headLength);
+    if (!head.endsWith("/")) {
+      const trimIndex = head.lastIndexOf("/");
+      if (trimIndex >= 0) {
+        head = head.slice(0, trimIndex + 1);
+      }
+    }
+    if (head.length === 0) {
+      head = normalized.slice(0, headLength);
+    }
+    return {
+      display: `${head}…${tail}`,
+      title: original,
+    } as const;
   }, [workspaceInfo, activeSession]);
   const markdownPlugins = useMemo(() => [remarkGfm], []);
   const inlineMarkdownComponents = useMemo<Components>(
