@@ -630,6 +630,13 @@ textarea {
   gap: 1.25rem;
 }
 
+.message-scroll-sentinel {
+  width: 100%;
+  height: 1px;
+  pointer-events: none;
+  flex: none;
+}
+
 .message-raw-json {
   flex: 1;
   margin: 0;

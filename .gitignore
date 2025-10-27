@@ -12,5 +12,6 @@ backend/workspaces/
 backend/var/
 var/
 workspaces/
+temp/
 *.tsbuildinfo
 worktrees/

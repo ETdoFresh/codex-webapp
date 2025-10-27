@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type SetStateAction,
 } from "react";
 import StatusChip from "./components/StatusChip";
 import FileEditorPanel from "./components/FileEditorPanel";
@@ -212,6 +213,15 @@ const messageTimeFormatter = new Intl.DateTimeFormat(undefined, {
   minute: "numeric",
 });
 
+const isScrolledToBottom = (
+  element: HTMLDivElement,
+  threshold = 64,
+): boolean => {
+  const distanceFromBottom =
+    element.scrollHeight - element.scrollTop - element.clientHeight;
+  return distanceFromBottom <= threshold;
+};
+
 const sortSessions = (sessions: Session[]) =>
   [...sessions].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
@@ -253,6 +263,9 @@ function App() {
   const [titleLocking, setTitleLocking] = useState(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const pendingScrollToBottomRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
   const titleEditingRef = useRef(false);
@@ -268,6 +281,83 @@ function App() {
       return next;
     });
   }, []);
+
+  const supportsIntersectionObserver = useMemo(
+    () => typeof window !== "undefined" && "IntersectionObserver" in window,
+    [],
+  );
+
+  const updateMessages = useCallback(
+    (action: SetStateAction<Message[]>) => {
+      if (chatViewMode !== "raw") {
+        const container = messageListRef.current;
+        if (container) {
+          const atBottom =
+            shouldAutoScrollRef.current || isScrolledToBottom(container);
+          shouldAutoScrollRef.current = atBottom;
+          if (atBottom) {
+            pendingScrollToBottomRef.current = true;
+          }
+        } else {
+          shouldAutoScrollRef.current = true;
+          pendingScrollToBottomRef.current = true;
+        }
+      }
+      setMessages(action);
+    },
+    [chatViewMode, setMessages],
+  );
+
+  const handleMessageListScroll = useCallback(() => {
+    if (chatViewMode === "raw") {
+      return;
+    }
+
+    const container = messageListRef.current;
+    if (!container) {
+      return;
+    }
+
+    shouldAutoScrollRef.current = isScrolledToBottom(container);
+    if (shouldAutoScrollRef.current) {
+      pendingScrollToBottomRef.current = true;
+    }
+  }, [chatViewMode]);
+
+  useEffect(() => {
+    if (!supportsIntersectionObserver || chatViewMode === "raw") {
+      return;
+    }
+
+    const container = messageListRef.current;
+    const sentinel = bottomSentinelRef.current;
+    if (!container || !sentinel) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.target !== sentinel) {
+            continue;
+          }
+
+          const isNearBottom = entry.isIntersecting || entry.intersectionRatio > 0;
+          shouldAutoScrollRef.current = isNearBottom;
+          if (isNearBottom) {
+            pendingScrollToBottomRef.current = true;
+          }
+        }
+      },
+      {
+        root: container,
+        threshold: [0, 0.25, 0.75, 1],
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [chatViewMode, supportsIntersectionObserver, messages.length]);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -371,7 +461,7 @@ function App() {
 
   useEffect(() => {
     if (!activeSessionId) {
-      setMessages([]);
+      updateMessages([]);
       return;
     }
 
@@ -383,7 +473,7 @@ function App() {
         if (canceled) {
           return;
         }
-        setMessages(data);
+        updateMessages(data);
       } catch (error) {
         console.error("Failed to load messages", error);
       } finally {
@@ -398,7 +488,14 @@ function App() {
     return () => {
       canceled = true;
     };
-  }, [activeSessionId]);
+  }, [activeSessionId, updateMessages]);
+
+  useEffect(() => {
+    if (chatViewMode !== "raw") {
+      shouldAutoScrollRef.current = true;
+      pendingScrollToBottomRef.current = true;
+    }
+  }, [chatViewMode, activeSessionId]);
 
   useEffect(() => {
     if (chatViewMode === "raw") {
@@ -409,7 +506,24 @@ function App() {
     if (!container) {
       return;
     }
-    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+
+    if (!(pendingScrollToBottomRef.current || shouldAutoScrollRef.current)) {
+      return;
+    }
+
+    const scrollToBottom = () => {
+      container.scrollTop = container.scrollHeight;
+      shouldAutoScrollRef.current = true;
+      pendingScrollToBottomRef.current = false;
+    };
+
+    if (typeof window !== "undefined" && "requestAnimationFrame" in window) {
+      window.requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    } else {
+      scrollToBottom();
+    }
   }, [messages, chatViewMode]);
 
   useEffect(() => {
@@ -1554,8 +1668,10 @@ function App() {
       const session = await createSession();
       setSessions((prev) => sortSessions([session, ...prev]));
       setActiveSessionId(session.id);
-      setMessages([]);
+      updateMessages([]);
       setComposerValue("");
+      shouldAutoScrollRef.current = true;
+      pendingScrollToBottomRef.current = true;
     } catch (error) {
       console.error("Failed to create session", error);
       setErrorNotice("Unable to create a new session. Please try again.");
@@ -1571,6 +1687,8 @@ function App() {
     setActiveSessionId(sessionId);
     setErrorNotice(null);
     setComposerValue("");
+    shouldAutoScrollRef.current = true;
+    pendingScrollToBottomRef.current = true;
   };
 
   const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
@@ -1620,7 +1738,7 @@ function App() {
           userMessageCreatedAt = normalizedMessage.createdAt;
 
           if (viewingTargetSession) {
-            setMessages((previous) => [...previous, normalizedMessage]);
+            updateMessages((previous) => [...previous, normalizedMessage]);
             setComposerValue("");
             setComposerAttachments([]);
           }
@@ -1680,7 +1798,7 @@ function App() {
               items: streamEvent.message.items ?? [],
             };
 
-            setMessages((previous) => {
+            updateMessages((previous) => {
               const existingIndex = previous.findIndex(
                 (message) => message.id === normalizedMessage.id,
               );
@@ -1705,7 +1823,7 @@ function App() {
           sawAssistantFinal = true;
 
           if (viewingTargetSession) {
-            setMessages((previous) => {
+            updateMessages((previous) => {
               const nextMessages = [...previous];
               const tempIndex = nextMessages.findIndex(
                 (message) => message.id === streamEvent.temporaryId,
@@ -1748,13 +1866,13 @@ function App() {
         if (streamEvent.type === "error") {
           const tempId = streamEvent.temporaryId;
           if (tempId && viewingTargetSession) {
-            setMessages((previous) =>
+            updateMessages((previous) =>
               previous.filter((message) => message.id !== tempId),
             );
           }
 
           if (viewingTargetSession) {
-            setMessages((previous) => [
+            updateMessages((previous) => [
               ...previous,
               {
                 id: `error-${Date.now()}`,
@@ -1798,7 +1916,7 @@ function App() {
                   new Date(userMessageCreatedAt).getTime());
 
             if (activeSessionIdRef.current === targetSessionId) {
-              setMessages(latestMessages);
+              updateMessages(latestMessages);
             }
 
             if (hasFinalAssistant) {
@@ -1845,7 +1963,7 @@ function App() {
           };
 
           if (activeSessionIdRef.current === targetSessionId) {
-            setMessages((previous) => [
+            updateMessages((previous) => [
               ...previous,
               normalizedErrorMessage,
               {
@@ -1893,7 +2011,7 @@ function App() {
 
       if (activeSessionId === sessionId) {
         setActiveSessionId(remaining[0]?.id ?? null);
-        setMessages([]);
+        updateMessages([]);
       }
     } catch (error) {
       console.error("Failed to delete session", error);
@@ -2182,6 +2300,7 @@ function App() {
                   <div
                     className="message-list message-list-detailed"
                     ref={messageListRef}
+                    onScroll={handleMessageListScroll}
                   >
                     {loadingMessages ? (
                       <div className="message-placeholder">
@@ -2194,9 +2313,18 @@ function App() {
                     ) : (
                       messages.map((message) => renderMessage(message, true))
                     )}
+                    <div
+                      ref={bottomSentinelRef}
+                      className="message-scroll-sentinel"
+                      aria-hidden="true"
+                    />
                   </div>
                 ) : (
-                  <div className="message-list" ref={messageListRef}>
+                  <div
+                    className="message-list"
+                    ref={messageListRef}
+                    onScroll={handleMessageListScroll}
+                  >
                     {loadingMessages ? (
                       <div className="message-placeholder">
                         Loading conversation…
@@ -2208,6 +2336,11 @@ function App() {
                     ) : (
                       messages.map((message) => renderMessage(message, false))
                     )}
+                    <div
+                      ref={bottomSentinelRef}
+                      className="message-scroll-sentinel"
+                      aria-hidden="true"
+                    />
                   </div>
                 )}
               </div>
