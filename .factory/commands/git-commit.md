@@ -11,7 +11,7 @@ Review the working tree and staged changes to craft a git commit message automat
    - Starts with one of **Add**, **Allow**, **Enhance**, **Fix**, **Improve**, **Refactor**, **Remove**, or **Update**.
    - Uses the imperative mood in Title Case, stays at or below 72 characters, and avoids unnecessary trailing punctuation.
    - Reflects the primary change set clearly.
-4. When the diff warrants extra context, craft a commit body immediately after a blank line that lists 2–5 bullet points, each beginning with an imperative verb and mirroring our style (e.g., "- Introduce …", "- Update …"). Capture the key technical details, major files, or impacts from the change. For tiny, self-explanatory commits, you may omit the bullet section entirely.
+4. When the diff warrants extra context, craft a commit body immediately after **one** blank line that lists 2–5 bullet points, each beginning with an imperative verb and mirroring our style (e.g., "- Introduce …", "- Update …"). Keep the bullet list contiguous (no blank lines between bullets). Capture the key technical details, major files, or impacts from the change. For tiny, self-explanatory commits, you may omit the bullet section entirely.
 5. Confirm the subject and bullet list aloud, then stage everything with `git add -A`.
 6. Commit using the generated subject, include the bullet list body when present, and avoid adding trailing signatures or co-author trailers.
 7. Push to `origin/$(git rev-parse --abbrev-ref HEAD)`.
