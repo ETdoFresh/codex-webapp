@@ -5,6 +5,7 @@ import metaRoutes from "./routes/metaRoutes";
 import sessionRoutes from "./routes/sessionRoutes";
 import debugRoutes from "./routes/debugRoutes";
 import workspaceRoutes from "./routes/workspaceRoutes";
+import deployRoutes from "./routes/deployRoutes";
 
 export function registerBackend(app: Application): void {
   app.use(express.json({ limit: "20mb" }));
@@ -13,6 +14,7 @@ export function registerBackend(app: Application): void {
   app.use(workspaceRoutes);
   app.use(sessionRoutes);
   app.use(debugRoutes);
+  app.use(deployRoutes);
 
   app.use(
     (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
