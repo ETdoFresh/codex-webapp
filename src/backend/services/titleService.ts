@@ -3,6 +3,7 @@ import { codexManager } from "../codexManager";
 import { claudeManager } from "../claudeManager";
 import { getCodexMeta } from "../settings";
 import type { SessionRecord } from "../types/database";
+import { droidCliManager } from "../droidCliManager";
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_TITLE_WORDS = 12;
@@ -168,7 +169,17 @@ export async function generateSessionTitle(
   if (serialized.length > 0) {
     try {
       const meta = getCodexMeta();
-      const manager = meta.provider === 'ClaudeCodeSDK' ? claudeManager : codexManager;
+      const manager = (() => {
+        switch (meta.provider) {
+          case 'ClaudeCodeSDK':
+            return claudeManager;
+          case 'DroidCLI':
+            return droidCliManager;
+          case 'CodexSDK':
+          default:
+            return codexManager;
+        }
+      })();
       const suggestion = await manager.generateTitleSuggestion(
         session,
         serialized,

@@ -43,7 +43,7 @@ const sanitizeNodeOptions = () => {
   process.env.NODE_OPTIONS = filtered.join(' ');
 };
 
-const normalizeCodexBinaryPath = (candidate: string | null | undefined): string | null => {
+const normalizeExecutablePath = (candidate: string | null | undefined): string | null => {
   if (!candidate) {
     return null;
   }
@@ -95,7 +95,7 @@ const resolveCodexPath = (): string | null => {
     .map((line) => line.trim())
     .find((line) => line.length > 0);
 
-  return normalizeCodexBinaryPath(firstLine);
+  return normalizeExecutablePath(firstLine);
 };
 
 const bundledCodexCandidates = (): string[] => {
@@ -221,7 +221,7 @@ const findBundledCodexPath = (): string | null => {
 };
 
 const ensureCodexPath = () => {
-  const normalizedCurrent = normalizeCodexBinaryPath(process.env.CODEX_PATH);
+  const normalizedCurrent = normalizeExecutablePath(process.env.CODEX_PATH);
   if (normalizedCurrent) {
     process.env.CODEX_PATH = normalizedCurrent;
     console.log(`[codex-webapp] using CODEX_PATH=${normalizedCurrent}`);
@@ -240,6 +240,51 @@ const ensureCodexPath = () => {
   if (resolved) {
     process.env.CODEX_PATH = resolved;
     console.log(`[codex-webapp] using CODEX_PATH=${resolved}`);
+  }
+};
+
+const resolveDroidPath = (): string | null => {
+  const normalized = normalizeExecutablePath(process.env.DROID_PATH);
+  if (normalized) {
+    return normalized;
+  }
+
+  const locator = process.platform === 'win32' ? 'where' : 'which';
+  const result = spawnSync(locator, ['droid'], { encoding: 'utf8' });
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+
+  const firstLine = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  return normalizeExecutablePath(firstLine);
+};
+
+const ensureDroidPath = () => {
+  const normalizedCurrent = normalizeExecutablePath(process.env.DROID_PATH);
+  if (normalizedCurrent) {
+    process.env.DROID_PATH = normalizedCurrent;
+    console.log(`[codex-webapp] using DROID_PATH=${normalizedCurrent}`);
+    return;
+  }
+
+  const originalCurrent = process.env.DROID_PATH?.trim();
+  if (originalCurrent) {
+    console.warn(
+      `[codex-webapp] DROID_PATH=${originalCurrent} is invalid, clearing and retrying resolution.`
+    );
+    delete process.env.DROID_PATH;
+  }
+
+  const resolved = resolveDroidPath();
+  if (resolved) {
+    process.env.DROID_PATH = resolved;
+    console.log(`[codex-webapp] using DROID_PATH=${resolved}`);
+  } else {
+    console.warn('[codex-webapp] droid binary not found in PATH. DroidCLI provider will not be available.');
   }
 };
 
@@ -357,6 +402,7 @@ const start = async () => {
   sanitizeNodeOptions();
   ensureCodexPath();
   ensureClaudePath();
+  ensureDroidPath();
 
   const app = express();
   app.disable('x-powered-by');

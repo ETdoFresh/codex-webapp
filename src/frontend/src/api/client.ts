@@ -92,6 +92,7 @@ const normalizeProvider = (value: string | undefined): AppMeta["provider"] => {
   if (
     value === "CodexSDK" ||
     value === "ClaudeCodeSDK" ||
+    value === "DroidCLI" ||
     value === "GeminiSDK"
   ) {
     return value;
@@ -117,6 +118,7 @@ const normalizeProviderList = (
 const PROVIDER_KEYS: ProviderOption[] = [
   "CodexSDK",
   "ClaudeCodeSDK",
+  "DroidCLI",
   "GeminiSDK",
 ];
 
@@ -156,6 +158,7 @@ const normalizeModelsByProvider = (
   const result: Record<ProviderOption, string[]> = {
     CodexSDK: [],
     ClaudeCodeSDK: [],
+    DroidCLI: [],
     GeminiSDK: [],
   };
 

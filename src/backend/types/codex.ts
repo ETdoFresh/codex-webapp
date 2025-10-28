@@ -8,7 +8,9 @@ export type CodexThreadEvent =
   | { type: 'error'; message: string }
   | { type: 'item.started'; item: ThreadItem }
   | { type: 'item.updated'; item: ThreadItem }
-  | { type: 'item.completed'; item: ThreadItem };
+  | { type: 'item.completed'; item: ThreadItem }
+  | { type: 'response.output_text.delta'; delta: string }
+  | { type: 'response.completed'; output: Array<{ text?: string }> };
 
 export type RunTurnResult = {
   result: RunResult;

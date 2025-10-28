@@ -91,7 +91,7 @@ export type PostMessageStreamEvent =
       type: "done";
     };
 
-export type ProviderOption = "CodexSDK" | "ClaudeCodeSDK" | "GeminiSDK";
+export type ProviderOption = "CodexSDK" | "ClaudeCodeSDK" | "DroidCLI" | "GeminiSDK";
 export type ReasoningEffort = "low" | "medium" | "high";
 
 export type AppMeta = {
