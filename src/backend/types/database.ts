@@ -1,4 +1,5 @@
 import type { ThreadItem } from '@openai/codex-sdk';
+import type { DeployConfig } from '../../shared/dokploy';
 
 export type SessionRecord = {
   id: string;
@@ -39,4 +40,11 @@ export type NewAttachmentInput = {
   mimeType: string;
   size: number;
   relativePath: string;
+};
+
+export type DeployConfigRow = {
+  id: string;
+  config: DeployConfig;
+  updatedAt: string;
+  hasApiKey: boolean;
 };

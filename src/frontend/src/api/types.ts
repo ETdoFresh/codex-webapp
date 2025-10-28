@@ -1,3 +1,9 @@
+import type {
+  DeployConfig,
+  DeployConfigResponse,
+  DeployEnvVar,
+} from "../../../shared/dokploy";
+
 export type Session = {
   id: string;
   title: string;
@@ -151,4 +157,38 @@ export type BrowseWorkspaceResponse = {
   entriesTruncated: boolean;
   quickAccess: string[];
   error: string | null;
+};
+
+export type DeployConfigPayload = DeployConfig & {
+  apiKey?: string | null;
+};
+
+export type DeployConfigResult = DeployConfigResponse & {
+  env?: DeployEnvVar[];
+};
+
+export type DeployTestResponse = {
+  ok: boolean;
+  projects?: unknown;
+  error?: string;
+};
+
+export type DeployProjectsResponse = {
+  projects: unknown[];
+};
+
+export type DeployApplicationsResponse = {
+  applications: Array<{
+    applicationId: string;
+    name: string;
+    description: string;
+  }>;
+};
+
+export type DeployUploadResponse = {
+  artifactKey: string;
+  artifactUrl: string;
+  expiresAt: string;
+  size: number;
+  config: DeployConfigResult;
 };

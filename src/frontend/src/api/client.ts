@@ -16,6 +16,12 @@ import type {
   SessionWorkspaceInfo,
   BrowseWorkspaceResponse,
   ProviderOption,
+  DeployApplicationsResponse,
+  DeployConfigPayload,
+  DeployConfigResult,
+  DeployProjectsResponse,
+  DeployTestResponse,
+  DeployUploadResponse,
 } from "./types";
 
 export class ApiError<T = unknown> extends Error {
@@ -397,6 +403,85 @@ export async function setSessionTitleLock(
     },
   );
   return response.session;
+}
+
+export async function fetchDeployConfig(): Promise<DeployConfigResult> {
+  const data = await request<DeployConfigResult>("/api/deploy/config");
+  return data;
+}
+
+export async function updateDeployConfig(
+  payload: DeployConfigPayload,
+): Promise<DeployConfigResult> {
+  const data = await request<DeployConfigResult>("/api/deploy/config", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  return data;
+}
+
+export async function testDeployConnection(
+  apiKey?: string,
+): Promise<DeployTestResponse> {
+  try {
+    const data = await request<DeployTestResponse>("/api/deploy/test", {
+      method: "POST",
+      body: JSON.stringify(apiKey ? { apiKey } : {}),
+    });
+    return data;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      const errorBody = error.body as { error?: unknown } | undefined;
+      return {
+        ok: false,
+        error:
+          errorBody && typeof errorBody.error === "string"
+            ? errorBody.error
+            : error.message,
+      };
+    }
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function syncDeployConfig(): Promise<DeployConfigResult> {
+  const data = await request<DeployConfigResult>("/api/deploy/sync", {
+    method: "POST",
+  });
+  return data;
+}
+
+export async function triggerDeployment(): Promise<{ ok: boolean; result: unknown }> {
+  const data = await request<{ ok: boolean; result: unknown }>("/api/deploy/deploy", {
+    method: "POST",
+  });
+  return data;
+}
+
+export async function fetchDokployProjects(): Promise<DeployProjectsResponse> {
+  const data = await request<DeployProjectsResponse>("/api/deploy/projects");
+  return data;
+}
+
+export async function fetchDokployApplications(
+  projectId?: string,
+): Promise<DeployApplicationsResponse> {
+  const url = projectId
+    ? `/api/deploy/applications?projectId=${encodeURIComponent(projectId)}`
+    : "/api/deploy/applications";
+  const data = await request<DeployApplicationsResponse>(url);
+  return data;
+}
+
+export async function uploadWorkspaceArtifact(
+  workspaceRoot?: string,
+): Promise<DeployUploadResponse> {
+  const body = workspaceRoot ? { workspaceRoot } : {};
+  const data = await request<DeployUploadResponse>("/api/deploy/upload", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return data;
 }
 
 export type AutoTitleMessagePayload = {

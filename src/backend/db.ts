@@ -11,11 +11,17 @@ import { DEFAULT_SESSION_TITLE } from "./config/sessions";
 import { generateSessionTitle } from "./services/titleService";
 import type {
   AttachmentRecord,
+  DeployConfigRow,
   MessageRecord,
   MessageWithAttachments,
   NewAttachmentInput,
   SessionRecord,
 } from "./types/database";
+import type { DeployConfig } from "../shared/dokploy";
+import {
+  decryptSecret,
+  encryptSecret,
+} from "./utils/secretVault";
 
 type RunItemRow = {
   id: string;
@@ -113,6 +119,16 @@ const migrations: string[] = [
   CREATE INDEX IF NOT EXISTS idx_message_run_items_session
     ON message_run_items(session_id)
 `,
+  `
+  CREATE TABLE IF NOT EXISTS deploy_configs (
+    id TEXT PRIMARY KEY,
+    config_json TEXT NOT NULL,
+    api_key_cipher TEXT,
+    api_key_iv TEXT,
+    api_key_tag TEXT,
+    updated_at TEXT NOT NULL
+  )
+`
 ];
 
 class SQLiteDatabase implements IDatabase {
@@ -197,6 +213,22 @@ class SQLiteDatabase implements IDatabase {
     MessageRecord
   >;
   private readonly resetAllThreadsStmt: Statement;
+  private readonly getDeployConfigStmt: Statement<[], {
+    id: string;
+    config_json: string;
+    api_key_cipher: string | null;
+    api_key_iv: string | null;
+    api_key_tag: string | null;
+    updated_at: string;
+  }>;
+  private readonly upsertDeployConfigStmt: Statement<{
+    id: string;
+    configJson: string;
+    apiKeyCipher: string | null;
+    apiKeyIv: string | null;
+    apiKeyTag: string | null;
+    updatedAt: string;
+  }>;
 
   constructor(private readonly workspace: IWorkspace) {
     this.db = new Database(databasePath);
@@ -375,6 +407,41 @@ class SQLiteDatabase implements IDatabase {
       WHERE session_id = @sessionId
       ORDER BY created_at ASC
     `);
+    this.getDeployConfigStmt = this.db.prepare(`
+      SELECT
+        id,
+        config_json,
+        api_key_cipher,
+        api_key_iv,
+        api_key_tag,
+        updated_at
+      FROM deploy_configs
+      WHERE id = 'default'
+    `);
+    this.upsertDeployConfigStmt = this.db.prepare(`
+      INSERT INTO deploy_configs (
+        id,
+        config_json,
+        api_key_cipher,
+        api_key_iv,
+        api_key_tag,
+        updated_at
+      ) VALUES (
+        @id,
+        @configJson,
+        @apiKeyCipher,
+        @apiKeyIv,
+        @apiKeyTag,
+        @updatedAt
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        config_json = excluded.config_json,
+        api_key_cipher = COALESCE(excluded.api_key_cipher, deploy_configs.api_key_cipher),
+        api_key_iv = COALESCE(excluded.api_key_iv, deploy_configs.api_key_iv),
+        api_key_tag = COALESCE(excluded.api_key_tag, deploy_configs.api_key_tag),
+        updated_at = excluded.updated_at
+    `);
+    this.initializeDeployConfig();
   }
 
   private ensureSessionColumns(): void {
@@ -389,6 +456,35 @@ class SQLiteDatabase implements IDatabase {
         `ALTER TABLE sessions ADD COLUMN title_locked INTEGER NOT NULL DEFAULT 0`,
       );
     }
+  }
+
+  private initializeDeployConfig(): void {
+    const existing = this.getDeployConfigStmt.get();
+    if (existing) {
+      return;
+    }
+
+    const defaultConfig: DeployConfig = {
+      baseUrl: "",
+      authMethod: "x-api-key",
+      source: {
+        type: "git",
+        provider: "github",
+        repository: "",
+        branch: "",
+      },
+      env: [],
+    };
+
+    const now = new Date().toISOString();
+    this.upsertDeployConfigStmt.run({
+      id: "default",
+      configJson: JSON.stringify(defaultConfig),
+      apiKeyCipher: null,
+      apiKeyIv: null,
+      apiKeyTag: null,
+      updatedAt: now,
+    });
   }
 
   private initializeWorkspaceMappings(): void {
@@ -606,6 +702,92 @@ class SQLiteDatabase implements IDatabase {
 
   resetAllSessionThreads(): void {
     this.resetAllThreadsStmt.run();
+  }
+
+  getDeployConfig(): DeployConfigRow | null {
+    const row = this.getDeployConfigStmt.get();
+    if (!row) {
+      return null;
+    }
+
+    let parsed: DeployConfig;
+    try {
+      parsed = JSON.parse(row.config_json) as DeployConfig;
+    } catch (error) {
+      console.warn("[codex-webapp] Failed to parse stored Dokploy config:", error);
+      parsed = {
+        baseUrl: "",
+        authMethod: "x-api-key",
+        source: {
+          type: "git",
+          provider: "github",
+        },
+        env: [],
+      };
+    }
+
+    return {
+      id: row.id,
+      config: parsed,
+      updatedAt: row.updated_at,
+      hasApiKey: Boolean(row.api_key_cipher),
+    };
+  }
+
+  saveDeployConfig(input: {
+    config: DeployConfig;
+    apiKey?: string | null;
+  }): DeployConfigRow {
+    const existing = this.getDeployConfigStmt.get();
+    let apiKeyCipher = existing?.api_key_cipher ?? null;
+    let apiKeyIv = existing?.api_key_iv ?? null;
+    let apiKeyTag = existing?.api_key_tag ?? null;
+
+    if (input.apiKey !== undefined) {
+      const trimmed = input.apiKey?.trim();
+      if (trimmed && trimmed.length > 0) {
+        const encrypted = encryptSecret(trimmed);
+        if (encrypted) {
+          apiKeyCipher = encrypted.cipherText;
+          apiKeyIv = encrypted.iv;
+          apiKeyTag = encrypted.tag;
+        } else {
+          apiKeyCipher = Buffer.from(trimmed, "utf8").toString("base64");
+          apiKeyIv = null;
+          apiKeyTag = null;
+        }
+      } else {
+        apiKeyCipher = null;
+        apiKeyIv = null;
+        apiKeyTag = null;
+      }
+    }
+
+    const updatedAt = new Date().toISOString();
+    this.upsertDeployConfigStmt.run({
+      id: "default",
+      configJson: JSON.stringify(input.config),
+      apiKeyCipher,
+      apiKeyIv,
+      apiKeyTag,
+      updatedAt,
+    });
+
+    return {
+      id: "default",
+      config: input.config,
+      updatedAt,
+      hasApiKey: Boolean(apiKeyCipher),
+    };
+  }
+
+  getDeployApiKey(): string | null {
+    const row = this.getDeployConfigStmt.get();
+    if (!row) {
+      return null;
+    }
+
+    return decryptSecret(row.api_key_cipher ?? null, row.api_key_iv, row.api_key_tag);
   }
 
   deleteSession(id: string): boolean {

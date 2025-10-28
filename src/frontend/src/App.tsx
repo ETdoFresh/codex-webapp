@@ -39,6 +39,7 @@ import type {
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import WorkspaceRootModal from "./components/WorkspaceRootModal";
+import DeployPanel from "./components/DeployPanel";
 
 const DEFAULT_SESSION_TITLE = "New Session";
 const THEME_STORAGE_KEY = "codex:theme";
@@ -302,7 +303,7 @@ function App() {
     filename: string;
   } | null>(null);
   const [chatViewMode, setChatViewMode] = useState<
-    "formatted" | "detailed" | "raw" | "editor"
+    "formatted" | "detailed" | "raw" | "editor" | "deploy"
   >("formatted");
   const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(
     new Set(),
@@ -322,6 +323,11 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
   const titleEditingRef = useRef(false);
+
+  const isRawView = chatViewMode === "raw";
+  const isDetailedView = chatViewMode === "detailed";
+  const isFileEditorView = chatViewMode === "editor";
+  const isDeployView = chatViewMode === "deploy";
 
   const persistMetaPreferences = useCallback((nextMeta: AppMeta) => {
     safeSetLocalStorageItem(LAST_PROVIDER_STORAGE_KEY, nextMeta.provider);
@@ -351,7 +357,7 @@ function App() {
 
   const updateMessages = useCallback(
     (action: SetStateAction<Message[]>) => {
-      if (chatViewMode !== "raw") {
+      if (!isRawView && !isDeployView) {
         const container = messageListRef.current;
         if (container) {
           const atBottom =
@@ -367,11 +373,11 @@ function App() {
       }
       setMessages(action);
     },
-    [chatViewMode, setMessages],
+    [isRawView, isDeployView, setMessages],
   );
 
   const handleMessageListScroll = useCallback(() => {
-    if (chatViewMode === "raw") {
+    if (isRawView || isDeployView) {
       return;
     }
 
@@ -384,10 +390,10 @@ function App() {
     if (shouldAutoScrollRef.current) {
       pendingScrollToBottomRef.current = true;
     }
-  }, [chatViewMode]);
+  }, [isRawView, isDeployView]);
 
   useEffect(() => {
-    if (!supportsIntersectionObserver || chatViewMode === "raw") {
+    if (!supportsIntersectionObserver || isRawView || isDeployView) {
       return;
     }
 
@@ -419,7 +425,7 @@ function App() {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [chatViewMode, supportsIntersectionObserver, messages.length]);
+  }, [isRawView, isDeployView, supportsIntersectionObserver, messages.length]);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -429,9 +435,6 @@ function App() {
     () => JSON.stringify(messages, null, 2),
     [messages],
   );
-  const isRawView = chatViewMode === "raw";
-  const isDetailedView = chatViewMode === "detailed";
-  const isFileEditorView = chatViewMode === "editor";
   const workspacePathDisplay = useMemo(() => {
     const effectivePath =
       workspaceInfo?.path ?? activeSession?.workspacePath ?? "";
@@ -568,14 +571,14 @@ function App() {
   }, [activeSessionId, updateMessages]);
 
   useEffect(() => {
-    if (chatViewMode !== "raw") {
+    if (!isRawView && !isDeployView) {
       shouldAutoScrollRef.current = true;
       pendingScrollToBottomRef.current = true;
     }
-  }, [chatViewMode, activeSessionId]);
+  }, [isRawView, isDeployView, activeSessionId]);
 
   useEffect(() => {
-    if (chatViewMode === "raw") {
+    if (isRawView || isDeployView) {
       return;
     }
 
@@ -2460,6 +2463,16 @@ function App() {
                     >
                       File Editor
                     </button>
+                    <button
+                      type="button"
+                      className={`chat-view-toggle-button${
+                        isDeployView ? " active" : ""
+                      }`}
+                      onClick={() => setChatViewMode("deploy")}
+                      aria-pressed={isDeployView}
+                    >
+                      Deploy
+                    </button>
                   </div>
                 </div>
               </header>
@@ -2467,13 +2480,17 @@ function App() {
               <div
                 className={`message-panel${isRawView ? " message-panel-raw" : ""}${
                   isDetailedView ? " message-panel-detailed" : ""
-                }${isFileEditorView ? " message-panel-editor" : ""}`}
+                }${isFileEditorView ? " message-panel-editor" : ""}${
+                  isDeployView ? " message-panel-deploy" : ""
+                }`}
               >
                 {isFileEditorView ? (
                   <FileEditorPanel
                     key={activeSession.id}
                     sessionId={activeSession.id}
                   />
+                ) : isDeployView ? (
+                  <DeployPanel />
                 ) : isRawView ? (
                   loadingMessages ? (
                     <div className="message-placeholder">
@@ -2536,7 +2553,8 @@ function App() {
                 )}
               </div>
 
-              <form className="composer" onSubmit={handleSendMessage}>
+              {!isDeployView ? (
+                <form className="composer" onSubmit={handleSendMessage}>
                 {composerAttachments.length > 0 ? (
                   <div className="composer-attachments">
                     {composerAttachments.map((attachment) => (
@@ -2658,7 +2676,8 @@ function App() {
                     {sendingMessage ? "Thinking…" : "Send"}
                   </button>
                 </div>
-              </form>
+                </form>
+              ) : null}
 
               {errorNotice ? (
                 <div className="error-banner">{errorNotice}</div>

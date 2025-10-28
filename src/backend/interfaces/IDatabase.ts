@@ -1,6 +1,7 @@
 import type { ThreadItem } from "@openai/codex-sdk";
 import type {
   AttachmentRecord,
+  DeployConfigRow,
   MessageWithAttachments,
   NewAttachmentInput,
   SessionRecord,
@@ -36,6 +37,12 @@ interface IDatabase {
   getDatabasePath(): string;
   getAttachment(id: string): AttachmentRecord | null;
   resetAllSessionThreads(): void;
+  getDeployConfig(): DeployConfigRow | null;
+  saveDeployConfig(input: {
+    config: DeployConfigRow["config"];
+    apiKey?: string | null;
+  }): DeployConfigRow;
+  getDeployApiKey(): string | null;
 }
 
 export default IDatabase;
