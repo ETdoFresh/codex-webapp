@@ -6,6 +6,8 @@ import type { ThreadItem, Usage } from "@openai/codex-sdk";
 import { z } from "zod";
 import database from "../db";
 import { codexManager } from "../codexManager";
+import { claudeManager } from "../claudeManager";
+import { getCodexMeta } from "../settings";
 import {
   allowedImageMimeTypes,
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -18,6 +20,21 @@ import type { IncomingAttachment, MessageResponse } from "../types/api";
 import { messageToResponse, toSessionResponse } from "../types/api";
 import type { SessionRecord } from "../types/database";
 import { getStreamEventTimeout, recordStreamDebugEvent } from "./streamDebug";
+import type IAgent from "../interfaces/IAgent";
+
+function getAgentManager(): IAgent {
+  const meta = getCodexMeta();
+  switch (meta.provider) {
+    case 'CodexSDK':
+      return codexManager;
+    case 'ClaudeCodeSDK':
+      return claudeManager;
+    case 'GeminiSDK':
+      throw new Error('GeminiSDK provider is not yet implemented');
+    default:
+      return codexManager;
+  }
+}
 
 const CODING_AGENT_INSTRUCTIONS = [
   "You are the Codex WebApp agent operating inside a Windows-based workspace.",
@@ -195,9 +212,28 @@ export async function handleSessionMessageRequest(
 
   let clientAborted = false;
   let responseFinished = false;
+  let stopIterator: (() => void) | null = null;
+
+  const stopStreamIterator = () => {
+    if (!stopIterator) {
+      return;
+    }
+    const stopper = stopIterator;
+    stopIterator = null;
+    try {
+      stopper();
+    } catch (error) {
+      appendDebugLog({
+        type: "iterator_stop_failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
   req.on("aborted", () => {
     clientAborted = true;
     appendDebugLog({ type: "client_aborted" });
+    stopStreamIterator();
   });
   res.on("finish", () => {
     responseFinished = true;
@@ -208,6 +244,9 @@ export async function handleSessionMessageRequest(
       appendDebugLog({ type: "client_closed_before_finish" });
     } else {
       appendDebugLog({ type: "client_closed_after_finish" });
+    }
+    if (!responseFinished) {
+      stopStreamIterator();
     }
   });
 
@@ -275,18 +314,31 @@ export async function handleSessionMessageRequest(
   sendSnapshot();
 
   try {
-    const { events } = await codexManager.runTurnStreamed(session, codexInput);
+    const manager = getAgentManager();
+    const { events } = await manager.runTurnStreamed(session, codexInput);
     const iterator = events[Symbol.asyncIterator]();
 
-    const timeoutMs = getStreamEventTimeout();
+    stopIterator = () => {
+      if (typeof iterator.return === "function") {
+        iterator.return(undefined).catch(() => {
+          // Swallow return errors; iterator is best-effort stopped.
+        });
+      }
+    };
+
+    const baseTimeoutMs = getStreamEventTimeout();
+    const postResponseTimeoutMs = Math.min(baseTimeoutMs, 5000);
+    let agentResponseCompleted = false;
+
     const timeoutSymbol = Symbol("stream timeout");
 
     const nextEvent = async (): Promise<
       IteratorResult<unknown, unknown> | typeof timeoutSymbol
     > => {
       let timer: NodeJS.Timeout | null = null;
+      const waitMs = agentResponseCompleted ? postResponseTimeoutMs : baseTimeoutMs;
       const timeoutPromise = new Promise<typeof timeoutSymbol>((resolve) => {
-        timer = setTimeout(() => resolve(timeoutSymbol), timeoutMs);
+        timer = setTimeout(() => resolve(timeoutSymbol), waitMs);
       });
       const result = await Promise.race([iterator.next(), timeoutPromise]);
       if (timer) {
@@ -298,7 +350,10 @@ export async function handleSessionMessageRequest(
     while (!clientAborted) {
       const result = await nextEvent();
       if (result === timeoutSymbol) {
-        const message = `Codex stream stalled after ${timeoutMs}ms without new events.`;
+        if (agentResponseCompleted) {
+          break;
+        }
+        const message = `Codex stream stalled after ${getStreamEventTimeout()}ms without new events.`;
         streamError = new Error(message);
         break;
       }
@@ -309,18 +364,21 @@ export async function handleSessionMessageRequest(
 
       const event = result.value as { type?: string };
 
-      if (event.type === "thread.started") {
+      // Handle thread/session initialization for both Codex and Claude
+      if (event.type === "thread.started" || event.type === "session.started") {
         const typedEvent = result.value as {
-          type: "thread.started";
+          type: "thread.started" | "session.started";
           thread_id?: string;
+          session_id?: string;
         };
+        const threadOrSessionId = typedEvent.thread_id ?? typedEvent.session_id;
         if (
-          typedEvent.thread_id &&
-          session.codexThreadId !== typedEvent.thread_id
+          threadOrSessionId &&
+          session.codexThreadId !== threadOrSessionId
         ) {
           const updated = database.updateSessionThreadId(
             session.id,
-            typedEvent.thread_id,
+            threadOrSessionId,
           );
           if (updated) {
             session.codexThreadId = updated.codexThreadId;
@@ -339,6 +397,9 @@ export async function handleSessionMessageRequest(
         handleItemEvent(typedEvent.item);
         if (event.type === "item.completed") {
           completedItems.push(typedEvent.item);
+          if (typedEvent.item.type === "agent_message") {
+            agentResponseCompleted = true;
+          }
         }
         sendSnapshot();
         continue;
@@ -350,6 +411,7 @@ export async function handleSessionMessageRequest(
           usage: Usage;
         };
         usage = typedEvent.usage;
+        agentResponseCompleted = true;
         continue;
       }
 
@@ -387,6 +449,7 @@ export async function handleSessionMessageRequest(
         };
         assistantText = typedEvent.output?.[0]?.text ?? assistantText;
         sendSnapshot();
+        agentResponseCompleted = true;
         continue;
       }
 
@@ -395,10 +458,16 @@ export async function handleSessionMessageRequest(
   } catch (error) {
     streamError =
       error instanceof Error ? error : new Error("Codex execution failed");
+  } finally {
+    stopStreamIterator();
   }
 
-  if (streamError) {
-    codexManager.forgetSession(session.id);
+  const hasAssistantContent =
+    assistantText.trim().length > 0 || completedItems.length > 0;
+
+  if (streamError && !hasAssistantContent) {
+    const manager = getAgentManager();
+    manager.forgetSession(session.id);
     if (session.codexThreadId) {
       database.updateSessionThreadId(session.id, null);
       session.codexThreadId = null;
@@ -431,6 +500,21 @@ export async function handleSessionMessageRequest(
     session: toSessionResponse(latestSession),
     usage,
   });
+
+  if (streamError) {
+    const manager = getAgentManager();
+    manager.forgetSession(session.id);
+    if (session.codexThreadId) {
+      database.updateSessionThreadId(session.id, null);
+      session.codexThreadId = null;
+    }
+    writeEvent({
+      type: "error",
+      message: streamError.message,
+      temporaryId: assistantTemporaryId,
+    });
+  }
+
   writeEvent({ type: "done" });
   const endedByServer = !res.writableEnded;
   if (endedByServer) {
