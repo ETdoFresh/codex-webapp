@@ -243,6 +243,40 @@ const ensureCodexPath = () => {
   }
 };
 
+const resolveClaudePath = (): string | null => {
+  if (process.env.CLAUDE_PATH && process.env.CLAUDE_PATH.trim() !== '') {
+    return process.env.CLAUDE_PATH;
+  }
+
+  const locator = process.platform === 'win32' ? 'where' : 'which';
+  const result = spawnSync(locator, ['claude'], { encoding: 'utf8' });
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+
+  const firstLine = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  return firstLine || null;
+};
+
+const ensureClaudePath = () => {
+  if (process.env.CLAUDE_PATH && process.env.CLAUDE_PATH.trim() !== '') {
+    console.log(`[codex-webapp] using CLAUDE_PATH=${process.env.CLAUDE_PATH}`);
+    return;
+  }
+
+  const resolved = resolveClaudePath();
+  if (resolved) {
+    process.env.CLAUDE_PATH = resolved;
+    console.log(`[codex-webapp] using CLAUDE_PATH=${resolved}`);
+  } else {
+    console.warn('[codex-webapp] claude binary not found in PATH. ClaudeCodeSDK provider will not work.');
+  }
+};
+
 const registerFrontendMiddleware = async (app: Application): Promise<ViteDevServer | undefined> => {
   if (isProduction) {
     app.use(express.static(clientDistPath));
@@ -322,6 +356,7 @@ const listenWithRetry = async (app: Application, startPort: number): Promise<Sta
 const start = async () => {
   sanitizeNodeOptions();
   ensureCodexPath();
+  ensureClaudePath();
 
   const app = express();
   app.disable('x-powered-by');

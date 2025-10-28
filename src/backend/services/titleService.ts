@@ -1,5 +1,7 @@
 import { DEFAULT_SESSION_TITLE } from "../config/sessions";
 import { codexManager } from "../codexManager";
+import { claudeManager } from "../claudeManager";
+import { getCodexMeta } from "../settings";
 import type { SessionRecord } from "../types/database";
 
 const MAX_TITLE_LENGTH = 80;
@@ -165,16 +167,18 @@ export async function generateSessionTitle(
 
   if (serialized.length > 0) {
     try {
-      const codexSuggestion = await codexManager.generateTitleSuggestion(
+      const meta = getCodexMeta();
+      const manager = meta.provider === 'ClaudeCodeSDK' ? claudeManager : codexManager;
+      const suggestion = await manager.generateTitleSuggestion(
         session,
         serialized,
       );
-      if (codexSuggestion && codexSuggestion.trim().length > 0) {
-        return clampTitle(codexSuggestion, fallbackTitle);
+      if (suggestion && suggestion.trim().length > 0) {
+        return clampTitle(suggestion, fallbackTitle);
       }
     } catch (error) {
       console.warn(
-        `[codex-webapp] Title suggestion via Codex failed for session ${session.id}:`,
+        `[codex-webapp] Title suggestion failed for session ${session.id}:`,
         error instanceof Error ? error.message : error,
       );
     }

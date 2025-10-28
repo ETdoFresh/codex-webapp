@@ -23,13 +23,24 @@ const parseList = (value: string | undefined): string[] => {
     .filter((item) => item.length > 0);
 };
 
+// Codex models
 const fallbackModels = ['gpt-5-codex', 'gpt-5'];
-const availableModels = Array.from(
+const codexModels = Array.from(
   new Set([...(parseList(process.env.CODEX_MODEL_OPTIONS)), defaultModel, ...fallbackModels])
 );
 
+// Claude models
+const claudeDefaultModel = (process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5-20250929').trim();
+const claudeFallbackModels = ['claude-sonnet-4-5-20250929', 'claude-opus-4-20250514', 'claude-haiku-4-5-20250929', 'claude-sonnet-3-5-20241022'];
+const claudeModels = Array.from(
+  new Set([...(parseList(process.env.CLAUDE_MODEL_OPTIONS)), claudeDefaultModel, ...claudeFallbackModels])
+);
+
+// Combined available models (will be filtered by provider in UI)
+const availableModels = Array.from(new Set([...codexModels, ...claudeModels]));
+
 const allowedProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK', 'GeminiSDK'];
-const fallbackProviders: CodexProvider[] = ['CodexSDK'];
+const fallbackProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK'];
 const availableProviders = (() => {
   const configured = parseList(process.env.CODEX_PROVIDER_OPTIONS)
     .map((value) => value as CodexProvider)
@@ -67,11 +78,27 @@ const defaultProvider = (() => {
   return value && availableProviders.includes(value) ? value : fallbackProviders[0];
 })();
 
-let currentModel = availableModels.includes(defaultModel) ? defaultModel : availableModels[0];
-let currentReasoningEffort = defaultReasoningEffort;
+// Initialize current provider first
 let currentProvider = availableProviders.includes(defaultProvider)
   ? defaultProvider
   : availableProviders[0];
+
+// Initialize model based on provider
+const getDefaultModelForProvider = (provider: CodexProvider): string => {
+  switch (provider) {
+    case 'CodexSDK':
+      return codexModels.includes(defaultModel) ? defaultModel : codexModels[0];
+    case 'ClaudeCodeSDK':
+      return claudeModels.includes(claudeDefaultModel) ? claudeDefaultModel : claudeModels[0];
+    case 'GeminiSDK':
+      return codexModels[0]; // Fallback to Codex model for now
+    default:
+      return availableModels[0];
+  }
+};
+
+let currentModel = getDefaultModelForProvider(currentProvider);
+let currentReasoningEffort = defaultReasoningEffort;
 
 export const getCodexMeta = (): CodexMeta => ({
   provider: currentProvider,
@@ -132,6 +159,13 @@ export const updateCodexMeta = (updates: {
       currentProvider = nextProvider;
       process.env.CODEX_PROVIDER = nextProvider;
       providerChanged = true;
+
+      // Auto-switch to appropriate model for the new provider if current model is incompatible
+      const providerModels = nextProvider === 'ClaudeCodeSDK' ? claudeModels : codexModels;
+      if (!providerModels.includes(currentModel)) {
+        currentModel = getDefaultModelForProvider(nextProvider);
+        modelChanged = true;
+      }
     }
   }
 
