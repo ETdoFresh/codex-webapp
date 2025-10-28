@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { getCodexMeta, updateCodexMeta } from '../settings';
 import { codexManager } from '../codexManager';
+import { droidCliManager } from '../droidCliManager';
 
 const router = Router();
 
@@ -13,7 +14,7 @@ const metaUpdateSchema = z
       .min(1)
       .optional(),
     reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
-    provider: z.enum(['CodexSDK', 'ClaudeCodeSDK', 'GeminiSDK']).optional()
+    provider: z.enum(['CodexSDK', 'ClaudeCodeSDK', 'DroidCLI', 'GeminiSDK']).optional()
   })
   .refine(
     (value) =>
@@ -44,6 +45,7 @@ router.patch('/api/meta', (req: Request, res: Response) => {
     const { meta, modelChanged, providerChanged } = updateCodexMeta(body.data);
     if (modelChanged || providerChanged) {
       codexManager.clearThreadCache();
+      droidCliManager.clearThreadCache();
     }
     res.json(meta);
   } catch (error) {

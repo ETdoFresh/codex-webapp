@@ -1,5 +1,5 @@
 export type CodexReasoningEffort = 'low' | 'medium' | 'high';
-export type CodexProvider = 'CodexSDK' | 'ClaudeCodeSDK' | 'GeminiSDK';
+export type CodexProvider = 'CodexSDK' | 'ClaudeCodeSDK' | 'DroidCLI' | 'GeminiSDK';
 
 type CodexMeta = {
   provider: CodexProvider;
@@ -38,22 +38,47 @@ const claudeModels = Array.from(
 );
 
 // Combined available models (will be filtered by provider in UI)
-const availableModels = Array.from(new Set([...codexModels, ...claudeModels]));
+const droidDefaultModel = (process.env.DROID_MODEL ?? 'glm-4.6').trim();
+const droidFallbackModels = ['glm-4.6', 'gpt-5-2025-08-07', 'claude-sonnet-4-5-20250929'];
+const droidModels = Array.from(
+  new Set([...(parseList(process.env.DROID_MODEL_OPTIONS)), droidDefaultModel, ...droidFallbackModels])
+);
+
+const availableModels = Array.from(new Set([...codexModels, ...claudeModels, ...droidModels]));
 const modelsByProvider: Record<CodexProvider, string[]> = {
   CodexSDK: codexModels,
   ClaudeCodeSDK: claudeModels,
+  DroidCLI: droidModels,
   GeminiSDK: codexModels
 };
 
-const allowedProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK', 'GeminiSDK'];
+const allowedProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK', 'DroidCLI', 'GeminiSDK'];
 const fallbackProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK'];
+const isProviderAvailable = (provider: CodexProvider): boolean => {
+  switch (provider) {
+    case 'DroidCLI':
+      return Boolean(process.env.DROID_PATH && process.env.DROID_PATH.trim().length > 0);
+    case 'ClaudeCodeSDK':
+      return true;
+    case 'CodexSDK':
+      return true;
+    case 'GeminiSDK':
+      return false;
+    default:
+      return false;
+  }
+};
+
 const availableProviders = (() => {
   const configured = parseList(process.env.CODEX_PROVIDER_OPTIONS)
     .map((value) => value as CodexProvider)
     .filter((value): value is CodexProvider => allowedProviders.includes(value));
 
   const combined = new Set<CodexProvider>([...fallbackProviders, ...configured]);
-  return Array.from(combined);
+  if (isProviderAvailable('DroidCLI')) {
+    combined.add('DroidCLI');
+  }
+  return Array.from(combined).filter((provider) => isProviderAvailable(provider));
 })();
 
 const allowedReasoningEfforts: CodexReasoningEffort[] = ['low', 'medium', 'high'];
@@ -96,6 +121,8 @@ const getDefaultModelForProvider = (provider: CodexProvider): string => {
       return codexModels.includes(defaultModel) ? defaultModel : codexModels[0];
     case 'ClaudeCodeSDK':
       return claudeModels.includes(claudeDefaultModel) ? claudeDefaultModel : claudeModels[0];
+    case 'DroidCLI':
+      return droidModels.includes(droidDefaultModel) ? droidDefaultModel : droidModels[0];
     case 'GeminiSDK':
       return codexModels[0]; // Fallback to Codex model for now
     default:

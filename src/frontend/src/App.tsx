@@ -93,7 +93,10 @@ const safeSetLocalStorageItem = (key: string, value: string) => {
 };
 
 const isProviderValue = (value: string | null): value is AppMeta["provider"] =>
-  value === "CodexSDK" || value === "ClaudeCodeSDK" || value === "GeminiSDK";
+  value === "CodexSDK" ||
+  value === "ClaudeCodeSDK" ||
+  value === "DroidCLI" ||
+  value === "GeminiSDK";
 
 const isReasoningValue = (
   value: string | null,

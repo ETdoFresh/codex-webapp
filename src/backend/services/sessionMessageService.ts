@@ -21,6 +21,7 @@ import { messageToResponse, toSessionResponse } from "../types/api";
 import type { SessionRecord } from "../types/database";
 import { getStreamEventTimeout, recordStreamDebugEvent } from "./streamDebug";
 import type IAgent from "../interfaces/IAgent";
+import { droidCliManager } from "../droidCliManager";
 
 function getAgentManager(): IAgent {
   const meta = getCodexMeta();
@@ -29,6 +30,8 @@ function getAgentManager(): IAgent {
       return codexManager;
     case 'ClaudeCodeSDK':
       return claudeManager;
+    case 'DroidCLI':
+      return droidCliManager;
     case 'GeminiSDK':
       throw new Error('GeminiSDK provider is not yet implemented');
     default:
