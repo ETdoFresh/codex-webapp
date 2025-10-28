@@ -8,6 +8,7 @@ type CodexMeta = {
   reasoningEffort: CodexReasoningEffort;
   availableModels: string[];
   availableReasoningEfforts: CodexReasoningEffort[];
+  modelsByProvider: Record<CodexProvider, string[]>;
 };
 
 const defaultModel = (process.env.CODEX_MODEL ?? 'gpt-5-codex').trim();
@@ -38,6 +39,11 @@ const claudeModels = Array.from(
 
 // Combined available models (will be filtered by provider in UI)
 const availableModels = Array.from(new Set([...codexModels, ...claudeModels]));
+const modelsByProvider: Record<CodexProvider, string[]> = {
+  CodexSDK: codexModels,
+  ClaudeCodeSDK: claudeModels,
+  GeminiSDK: codexModels
+};
 
 const allowedProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK', 'GeminiSDK'];
 const fallbackProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK'];
@@ -106,7 +112,8 @@ export const getCodexMeta = (): CodexMeta => ({
   model: currentModel,
   reasoningEffort: currentReasoningEffort,
   availableModels,
-  availableReasoningEfforts
+  availableReasoningEfforts,
+  modelsByProvider
 });
 
 export const updateCodexMeta = (updates: {
@@ -123,50 +130,72 @@ export const updateCodexMeta = (updates: {
   let reasoningChanged = false;
   let providerChanged = false;
 
-  if (typeof updates.model === 'string') {
-    const nextModel = updates.model.trim();
-    if (!availableModels.includes(nextModel)) {
-      throw new Error(`Unsupported model: ${updates.model}`);
-    }
+  const resolveProviderModels = (provider: CodexProvider): string[] => {
+    const list = modelsByProvider[provider];
+    return list && list.length > 0 ? list : availableModels;
+  };
 
-    if (nextModel !== currentModel) {
-      currentModel = nextModel;
-      process.env.CODEX_MODEL = nextModel;
-      modelChanged = true;
-    }
-  }
+  const previousModel = currentModel;
+  const previousProvider = currentProvider;
+  const previousReasoningEffort = currentReasoningEffort;
 
-  if (typeof updates.reasoningEffort === 'string') {
-    const nextEffort = updates.reasoningEffort;
-    if (!availableReasoningEfforts.includes(nextEffort)) {
-      throw new Error(`Unsupported reasoning effort: ${updates.reasoningEffort}`);
-    }
-
-    if (nextEffort !== currentReasoningEffort) {
-      currentReasoningEffort = nextEffort;
-      process.env.CODEX_REASONING_EFFORT = nextEffort;
-      reasoningChanged = true;
-    }
-  }
+  let nextProvider = previousProvider;
+  let nextModel = previousModel;
+  let nextReasoningEffort = previousReasoningEffort;
 
   if (typeof updates.provider === 'string') {
-    const nextProvider = updates.provider;
-    if (!availableProviders.includes(nextProvider)) {
+    const proposedProvider = updates.provider as CodexProvider;
+    if (!availableProviders.includes(proposedProvider)) {
       throw new Error(`Unsupported provider: ${updates.provider}`);
     }
 
-    if (nextProvider !== currentProvider) {
-      currentProvider = nextProvider;
-      process.env.CODEX_PROVIDER = nextProvider;
-      providerChanged = true;
+    nextProvider = proposedProvider;
+    providerChanged = proposedProvider !== previousProvider;
+  }
 
-      // Auto-switch to appropriate model for the new provider if current model is incompatible
-      const providerModels = nextProvider === 'ClaudeCodeSDK' ? claudeModels : codexModels;
-      if (!providerModels.includes(currentModel)) {
-        currentModel = getDefaultModelForProvider(nextProvider);
-        modelChanged = true;
-      }
+  if (typeof updates.model === 'string') {
+    const candidateModel = updates.model.trim();
+    const providerModels = resolveProviderModels(nextProvider);
+    if (!providerModels.includes(candidateModel)) {
+      throw new Error(`Unsupported model: ${updates.model}`);
     }
+
+    nextModel = candidateModel;
+    modelChanged = candidateModel !== previousModel;
+  }
+
+  if (typeof updates.reasoningEffort === 'string') {
+    const proposedEffort = updates.reasoningEffort;
+    if (!availableReasoningEfforts.includes(proposedEffort)) {
+      throw new Error(`Unsupported reasoning effort: ${updates.reasoningEffort}`);
+    }
+
+    nextReasoningEffort = proposedEffort;
+    reasoningChanged = proposedEffort !== previousReasoningEffort;
+  }
+
+  const providerModels = resolveProviderModels(nextProvider);
+  if (!providerModels.includes(nextModel)) {
+    const defaultForProvider = getDefaultModelForProvider(nextProvider);
+    if (defaultForProvider !== nextModel) {
+      nextModel = defaultForProvider;
+      modelChanged = defaultForProvider !== previousModel;
+    }
+  }
+
+  if (modelChanged) {
+    currentModel = nextModel;
+    process.env.CODEX_MODEL = nextModel;
+  }
+
+  if (reasoningChanged) {
+    currentReasoningEffort = nextReasoningEffort;
+    process.env.CODEX_REASONING_EFFORT = nextReasoningEffort;
+  }
+
+  if (providerChanged) {
+    currentProvider = nextProvider;
+    process.env.CODEX_PROVIDER = nextProvider;
   }
 
   return {
