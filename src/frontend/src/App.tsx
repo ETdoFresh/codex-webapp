@@ -54,6 +54,20 @@ const FALLBACK_REASONING: AppMeta["reasoningEffort"][] = [
   "high",
 ];
 
+const getModelOptionsForProvider = (
+  meta: AppMeta,
+  provider: AppMeta["provider"],
+): string[] => {
+  const providerModels = meta.modelsByProvider?.[provider];
+  if (providerModels && providerModels.length > 0) {
+    return providerModels;
+  }
+  if (meta.availableModels.length > 0) {
+    return meta.availableModels;
+  }
+  return FALLBACK_MODELS;
+};
+
 const safeGetLocalStorageItem = (key: string): string | null => {
   if (typeof window === "undefined") {
     return null;
@@ -1060,10 +1074,20 @@ function App() {
     }
 
     const previousMeta = meta;
-    setMeta({ ...meta, provider: nextProvider });
+    const modelOptions = getModelOptionsForProvider(meta, nextProvider);
+    const nextModel = modelOptions.includes(meta.model)
+      ? meta.model
+      : modelOptions[0] ?? meta.model;
+
+    setMeta({ ...meta, provider: nextProvider, model: nextModel });
     setUpdatingMeta(true);
 
-    void updateMeta({ provider: nextProvider })
+    const payload =
+      nextModel !== previousMeta.model
+        ? { provider: nextProvider, model: nextModel }
+        : { provider: nextProvider };
+
+    void updateMeta(payload)
       .then((updated) => {
         setMeta(updated);
         persistMetaPreferences(updated);
@@ -2592,10 +2616,7 @@ function App() {
                             onChange={handleModelChange}
                             disabled={updatingMeta}
                           >
-                            {(meta.availableModels.length > 0
-                              ? meta.availableModels
-                              : FALLBACK_MODELS
-                            ).map((option) => (
+                            {getModelOptionsForProvider(meta, meta.provider).map((option) => (
                               <option key={option} value={option}>
                                 {option}
                               </option>

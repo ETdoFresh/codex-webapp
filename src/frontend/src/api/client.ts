@@ -15,6 +15,7 @@ import type {
   WorkspaceFileContentResponse,
   SessionWorkspaceInfo,
   BrowseWorkspaceResponse,
+  ProviderOption,
 } from "./types";
 
 export class ApiError<T = unknown> extends Error {
@@ -113,40 +114,108 @@ const normalizeProviderList = (
   return deduped.size > 0 ? Array.from(deduped) : ["CodexSDK"];
 };
 
-export async function fetchMeta(): Promise<AppMeta> {
-  const data = await request<{
-    provider: string;
-    availableProviders: string[];
-    model: string;
-    reasoningEffort: string;
-    availableModels: string[];
-    availableReasoningEfforts: string[];
-  }>("/api/meta");
+const PROVIDER_KEYS: ProviderOption[] = [
+  "CodexSDK",
+  "ClaudeCodeSDK",
+  "GeminiSDK",
+];
 
+const DEFAULT_AVAILABLE_MODELS = ["gpt-5-codex", "gpt-5"];
+
+const normalizeModelArray = (values: unknown): string[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const trimmed = values
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
+
+  return trimmed.length > 0 ? Array.from(new Set(trimmed)) : [];
+};
+
+const normalizeModelList = (
+  values: unknown,
+  fallback: string[],
+): string[] => {
+  const normalized = normalizeModelArray(values);
+  return normalized.length > 0 ? normalized : [...fallback];
+};
+
+const normalizeModelsByProvider = (
+  value: unknown,
+  fallbackModels: string[],
+): Record<ProviderOption, string[]> => {
+  const candidate =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const baseFallback =
+    fallbackModels.length > 0 ? fallbackModels : DEFAULT_AVAILABLE_MODELS;
+
+  const result: Record<ProviderOption, string[]> = {
+    CodexSDK: [],
+    ClaudeCodeSDK: [],
+    GeminiSDK: [],
+  };
+
+  for (const provider of PROVIDER_KEYS) {
+    const rawList = provider in candidate ? candidate[provider] : undefined;
+    result[provider] = normalizeModelList(rawList, baseFallback);
+  }
+
+  return result;
+};
+
+type MetaResponsePayload = {
+  provider: string;
+  availableProviders: string[];
+  model: string;
+  reasoningEffort: string;
+  availableModels: string[];
+  availableReasoningEfforts: string[];
+  modelsByProvider?: Record<string, string[]>;
+};
+
+const normalizeMetaResponse = (data: MetaResponsePayload): AppMeta => {
   const availableProviders = normalizeProviderList(data.availableProviders);
   const availableReasoningEfforts = normalizeReasoningEffortList(
     data.availableReasoningEfforts,
   );
 
-  const availableModels =
-    Array.isArray(data.availableModels) && data.availableModels.length > 0
-      ? Array.from(
-          new Set(
-            data.availableModels
-              .map((item) => item.trim())
-              .filter((item) => item.length > 0),
-          ),
-        )
-      : ["gpt-5-codex", "gpt-5"];
+  const availableModelsInput = Array.isArray(data.availableModels)
+    ? data.availableModels
+    : undefined;
+  const normalizedAvailableModels = normalizeModelList(
+    availableModelsInput,
+    DEFAULT_AVAILABLE_MODELS,
+  );
 
-  const model = availableModels.includes(data.model)
-    ? data.model
-    : (availableModels[0] ?? "gpt-5-codex");
+  const modelsByProvider = normalizeModelsByProvider(
+    data.modelsByProvider,
+    normalizedAvailableModels,
+  );
+
+  const availableModels = Array.from(
+    new Set(
+      PROVIDER_KEYS.flatMap((provider) => modelsByProvider[provider]).concat(
+        normalizedAvailableModels,
+      ),
+    ),
+  );
 
   const providerCandidate = normalizeProvider(data.provider);
   const provider = availableProviders.includes(providerCandidate)
     ? providerCandidate
     : availableProviders[0] ?? "CodexSDK";
+
+  const providerModelOptions = modelsByProvider[provider];
+  const effectiveModelOptions =
+    providerModelOptions.length > 0 ? providerModelOptions : availableModels;
+
+  const model = effectiveModelOptions.includes(data.model)
+    ? data.model
+    : effectiveModelOptions[0] ?? (availableModels[0] ?? DEFAULT_AVAILABLE_MODELS[0]);
 
   return {
     provider,
@@ -155,7 +224,13 @@ export async function fetchMeta(): Promise<AppMeta> {
     reasoningEffort: normalizeReasoningEffort(data.reasoningEffort),
     availableModels,
     availableReasoningEfforts,
+    modelsByProvider,
   };
+};
+
+export async function fetchMeta(): Promise<AppMeta> {
+  const data = await request<MetaResponsePayload>("/api/meta");
+  return normalizeMetaResponse(data);
 }
 
 export async function updateMeta(payload: {
@@ -163,51 +238,11 @@ export async function updateMeta(payload: {
   reasoningEffort?: AppMeta["reasoningEffort"];
   provider?: AppMeta["provider"];
 }): Promise<AppMeta> {
-  const data = await request<{
-    provider: string;
-    availableProviders: string[];
-    model: string;
-    reasoningEffort: string;
-    availableModels: string[];
-    availableReasoningEfforts: string[];
-  }>("/api/meta", {
+  const data = await request<MetaResponsePayload>("/api/meta", {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
-
-  const availableProviders = normalizeProviderList(data.availableProviders);
-  const availableReasoningEfforts = normalizeReasoningEffortList(
-    data.availableReasoningEfforts,
-  );
-
-  const availableModels =
-    Array.isArray(data.availableModels) && data.availableModels.length > 0
-      ? Array.from(
-          new Set(
-            data.availableModels
-              .map((item) => item.trim())
-              .filter((item) => item.length > 0),
-          ),
-        )
-      : ["gpt-5-codex", "gpt-5"];
-
-  const model = availableModels.includes(data.model)
-    ? data.model
-    : (availableModels[0] ?? "gpt-5-codex");
-
-  const providerCandidate = normalizeProvider(data.provider);
-  const provider = availableProviders.includes(providerCandidate)
-    ? providerCandidate
-    : availableProviders[0] ?? "CodexSDK";
-
-  return {
-    provider,
-    availableProviders,
-    model,
-    reasoningEffort: normalizeReasoningEffort(data.reasoningEffort),
-    availableModels,
-    availableReasoningEfforts,
-  };
+  return normalizeMetaResponse(data);
 }
 
 export async function createSession(title?: string): Promise<Session> {

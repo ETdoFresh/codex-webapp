@@ -91,13 +91,17 @@ export type PostMessageStreamEvent =
       type: "done";
     };
 
+export type ProviderOption = "CodexSDK" | "ClaudeCodeSDK" | "GeminiSDK";
+export type ReasoningEffort = "low" | "medium" | "high";
+
 export type AppMeta = {
-  provider: "CodexSDK" | "ClaudeCodeSDK" | "GeminiSDK";
-  availableProviders: Array<"CodexSDK" | "ClaudeCodeSDK" | "GeminiSDK">;
+  provider: ProviderOption;
+  availableProviders: ProviderOption[];
   model: string;
-  reasoningEffort: "low" | "medium" | "high";
+  reasoningEffort: ReasoningEffort;
   availableModels: string[];
-  availableReasoningEfforts: Array<"low" | "medium" | "high">;
+  availableReasoningEfforts: ReasoningEffort[];
+  modelsByProvider: Record<ProviderOption, string[]>;
 };
 
 export type AttachmentUpload = {
