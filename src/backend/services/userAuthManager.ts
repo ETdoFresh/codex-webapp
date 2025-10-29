@@ -9,6 +9,7 @@ const providerDirectoryMap: Record<UserAuthFileRecord["provider"], string> = {
   codex: ".codex",
   claude: ".claude",
   droid: ".droid",
+  copilot: ".copilot",
 };
 
 const baseAuthDirectory = path.join(os.tmpdir(), "codex-webapp", "user-auth");

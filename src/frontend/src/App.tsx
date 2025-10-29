@@ -100,6 +100,7 @@ const isProviderValue = (value: string | null): value is AppMeta["provider"] =>
   value === "CodexSDK" ||
   value === "ClaudeCodeSDK" ||
   value === "DroidCLI" ||
+  value === "CopilotCLI" ||
   value === "GeminiSDK";
 
 const isReasoningValue = (
@@ -2792,3 +2793,4 @@ function App() {
 }
 
 export default App;
+  

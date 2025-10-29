@@ -119,7 +119,7 @@ export type PostMessageStreamEvent =
       type: "done";
     };
 
-export type ProviderOption = "CodexSDK" | "ClaudeCodeSDK" | "DroidCLI" | "GeminiSDK";
+export type ProviderOption = "CodexSDK" | "ClaudeCodeSDK" | "DroidCLI" | "CopilotCLI" | "GeminiSDK";
 export type ReasoningEffort = "low" | "medium" | "high";
 
 export type AppMeta = {
@@ -236,7 +236,7 @@ export type UpdateUserRequest = {
 
 export type UserAuthFileSummary = {
   id: string;
-  provider: 'codex' | 'claude' | 'droid';
+  provider: 'codex' | 'claude' | 'droid' | 'copilot';
   fileName: string;
   createdAt: string;
   updatedAt: string;
@@ -251,7 +251,7 @@ export type SaveUserAuthFileRequest = {
 };
 
 export type UserAuthFileDetail = {
-  provider: 'codex' | 'claude' | 'droid';
+  provider: 'codex' | 'claude' | 'droid' | 'copilot';
   fileName: string;
   content: string;
   updatedAt: string;

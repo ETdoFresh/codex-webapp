@@ -7,7 +7,7 @@ import { decryptSecret, encryptSecret } from "../utils/secretVault";
 
 const router = Router();
 
-const providerSchema = z.enum(["codex", "claude", "droid"]);
+const providerSchema = z.enum(["codex", "claude", "droid", "copilot"]);
 const fileNameSchema = z
   .string()
   .trim()

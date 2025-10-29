@@ -221,6 +221,7 @@ const normalizeProvider = (value: string | undefined): AppMeta["provider"] => {
     value === "CodexSDK" ||
     value === "ClaudeCodeSDK" ||
     value === "DroidCLI" ||
+    value === "CopilotCLI" ||
     value === "GeminiSDK"
   ) {
     return value;
@@ -247,6 +248,7 @@ const PROVIDER_KEYS: ProviderOption[] = [
   "CodexSDK",
   "ClaudeCodeSDK",
   "DroidCLI",
+  "CopilotCLI",
   "GeminiSDK",
 ];
 
@@ -287,6 +289,7 @@ const normalizeModelsByProvider = (
     CodexSDK: [],
     ClaudeCodeSDK: [],
     DroidCLI: [],
+    CopilotCLI: [],
     GeminiSDK: [],
   };
 
@@ -731,3 +734,4 @@ export async function saveWorkspaceFile(
 
   return data.file;
 }
+  

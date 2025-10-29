@@ -1,5 +1,5 @@
 export type CodexReasoningEffort = 'low' | 'medium' | 'high';
-export type CodexProvider = 'CodexSDK' | 'ClaudeCodeSDK' | 'DroidCLI' | 'GeminiSDK';
+export type CodexProvider = 'CodexSDK' | 'ClaudeCodeSDK' | 'DroidCLI' | 'CopilotCLI' | 'GeminiSDK';
 
 type CodexMeta = {
   provider: CodexProvider;
@@ -44,20 +44,32 @@ const droidModels = Array.from(
   new Set([...(parseList(process.env.DROID_MODEL_OPTIONS)), droidDefaultModel, ...droidFallbackModels])
 );
 
-const availableModels = Array.from(new Set([...codexModels, ...claudeModels, ...droidModels]));
+// Copilot models
+const copilotDefaultModel = (process.env.COPILOT_MODEL ?? 'claude-sonnet-4.5').trim();
+const copilotFallbackModels = ['claude-sonnet-4.5', 'claude-sonnet-4', 'claude-haiku-4.5', 'gpt-5'];
+const copilotModels = Array.from(
+  new Set([...(parseList(process.env.COPILOT_MODEL_OPTIONS)), copilotDefaultModel, ...copilotFallbackModels])
+);
+
+const availableModels = Array.from(new Set([...codexModels, ...claudeModels, ...droidModels, ...copilotModels]));
 const modelsByProvider: Record<CodexProvider, string[]> = {
   CodexSDK: codexModels,
   ClaudeCodeSDK: claudeModels,
   DroidCLI: droidModels,
+  CopilotCLI: copilotModels,
   GeminiSDK: codexModels
 };
 
-const allowedProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK', 'DroidCLI', 'GeminiSDK'];
+const allowedProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK', 'DroidCLI', 'CopilotCLI', 'GeminiSDK'];
 const fallbackProviders: CodexProvider[] = ['CodexSDK', 'ClaudeCodeSDK'];
 const isProviderAvailable = (provider: CodexProvider): boolean => {
   switch (provider) {
     case 'DroidCLI':
       return Boolean(process.env.DROID_PATH && process.env.DROID_PATH.trim().length > 0);
+    case 'CopilotCLI':
+      // Copilot CLI is available if the binary can be found
+      // User can set COPILOT_PATH or rely on 'copilot' being in PATH
+      return true; // We'll let it fail at runtime if not available
     case 'ClaudeCodeSDK':
       return true;
     case 'CodexSDK':
@@ -77,6 +89,9 @@ const availableProviders = (() => {
   const combined = new Set<CodexProvider>([...fallbackProviders, ...configured]);
   if (isProviderAvailable('DroidCLI')) {
     combined.add('DroidCLI');
+  }
+  if (isProviderAvailable('CopilotCLI')) {
+    combined.add('CopilotCLI');
   }
   return Array.from(combined).filter((provider) => isProviderAvailable(provider));
 })();
@@ -123,6 +138,8 @@ const getDefaultModelForProvider = (provider: CodexProvider): string => {
       return claudeModels.includes(claudeDefaultModel) ? claudeDefaultModel : claudeModels[0];
     case 'DroidCLI':
       return droidModels.includes(droidDefaultModel) ? droidDefaultModel : droidModels[0];
+    case 'CopilotCLI':
+      return copilotModels.includes(copilotDefaultModel) ? copilotDefaultModel : copilotModels[0];
     case 'GeminiSDK':
       return codexModels[0]; // Fallback to Codex model for now
     default:

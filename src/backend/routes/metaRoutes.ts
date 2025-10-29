@@ -17,7 +17,7 @@ const metaUpdateSchema = z
       .min(1)
       .optional(),
     reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
-    provider: z.enum(['CodexSDK', 'ClaudeCodeSDK', 'DroidCLI', 'GeminiSDK']).optional()
+    provider: z.enum(['CodexSDK', 'ClaudeCodeSDK', 'DroidCLI', 'CopilotCLI', 'GeminiSDK']).optional()
   })
   .refine(
     (value) =>

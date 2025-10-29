@@ -69,7 +69,7 @@ export type LoginSessionRecord = {
 export type UserAuthFileRecord = {
   id: string;
   userId: string;
-  provider: 'codex' | 'claude' | 'droid';
+  provider: 'codex' | 'claude' | 'droid' | 'copilot';
   fileName: string;
   encryptedContent: string;
   encryptedIv: string | null;

@@ -22,6 +22,7 @@ import type { SessionRecord } from "../types/database";
 import { getStreamEventTimeout, recordStreamDebugEvent } from "./streamDebug";
 import type IAgent from "../interfaces/IAgent";
 import { droidCliManager } from "../droidCliManager";
+import { getCopilotCliManager } from "../copilotCliManager";
 import { synchronizeUserAuthFiles } from "./userAuthManager";
 
 function getAgentManager(): IAgent {
@@ -33,6 +34,8 @@ function getAgentManager(): IAgent {
       return claudeManager;
     case 'DroidCLI':
       return droidCliManager;
+    case 'CopilotCLI':
+      return getCopilotCliManager();
     case 'GeminiSDK':
       throw new Error('GeminiSDK provider is not yet implemented');
     default:

@@ -18,12 +18,13 @@ import { useAuth } from "../context/AuthContext";
 
 type ProviderKey = UserAuthFileSummary["provider"];
 
-const PROVIDERS: ProviderKey[] = ["codex", "claude", "droid"];
+const PROVIDERS: ProviderKey[] = ["codex", "claude", "droid", "copilot"];
 
 const providerLabels: Record<ProviderKey, string> = {
   codex: "Codex CLI",
   claude: "Claude CLI",
   droid: "Droid CLI",
+  copilot: "Copilot CLI",
 };
 
 const AdminPanel = () => {
