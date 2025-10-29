@@ -81,11 +81,19 @@ export const createDokployClient = (
       });
 
       if (!response.ok) {
-        let details: unknown;
+        // Read body ONCE as text, then try to parse JSON. Avoid double-read errors.
+        let details: unknown = null;
         try {
-          details = await response.json();
+          const raw = await response.text();
+          if (raw && raw.length > 0) {
+            try {
+              details = JSON.parse(raw);
+            } catch {
+              details = raw;
+            }
+          }
         } catch {
-          details = await response.text();
+          details = null;
         }
 
         const error = new Error(
