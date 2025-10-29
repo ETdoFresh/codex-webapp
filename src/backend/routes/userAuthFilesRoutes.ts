@@ -22,7 +22,7 @@ const saveAuthFileSchema = z.object({
 router.use(requireAdmin);
 
 router.get(
-  "/api/users/:id/auth-files",
+  "/users/:id/auth-files",
   asyncHandler(async (req, res) => {
     const user = database.getUserById(req.params.id);
     if (!user) {
@@ -43,7 +43,7 @@ router.get(
 );
 
 router.put(
-  "/api/users/:id/auth-files/:provider/:fileName",
+  "/users/:id/auth-files/:provider/:fileName",
   asyncHandler(async (req, res) => {
     const user = database.getUserById(req.params.id);
     if (!user) {
@@ -112,7 +112,7 @@ router.put(
 );
 
 router.get(
-  "/api/users/:id/auth-files/:provider/:fileName",
+  "/users/:id/auth-files/:provider/:fileName",
   asyncHandler(async (req, res) => {
     const user = database.getUserById(req.params.id);
     if (!user) {
@@ -161,7 +161,7 @@ router.get(
 );
 
 router.delete(
-  "/api/users/:id/auth-files/:provider/:fileName",
+  "/users/:id/auth-files/:provider/:fileName",
   asyncHandler(async (req, res) => {
     const user = database.getUserById(req.params.id);
     if (!user) {

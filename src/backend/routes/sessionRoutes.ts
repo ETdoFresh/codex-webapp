@@ -183,7 +183,7 @@ const findSessionOr404 = (sessionId: string, req: Request, res: Response) => {
 };
 
 router.get(
-  '/api/sessions',
+  '/sessions',
   asyncHandler(async (req, res) => {
     const sessions = database
       .listSessions(req.user!.id)
@@ -193,7 +193,7 @@ router.get(
 );
 
 router.post(
-  '/api/sessions',
+  '/sessions',
   asyncHandler(async (req, res) => {
     const body = optionalTitleSchema.parse(req.body);
     const title = body?.title ?? DEFAULT_SESSION_TITLE;
@@ -204,7 +204,7 @@ router.post(
 );
 
 router.get(
-  '/api/sessions/:id',
+  '/sessions/:id',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -216,7 +216,7 @@ router.get(
 );
 
 router.patch(
-  '/api/sessions/:id',
+  '/sessions/:id',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -240,7 +240,7 @@ router.patch(
 );
 
 router.post(
-  '/api/sessions/:id/title/lock',
+  '/sessions/:id/title/lock',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -259,7 +259,7 @@ router.post(
 );
 
 router.post(
-  '/api/sessions/:id/title/auto',
+  '/sessions/:id/title/auto',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -281,7 +281,7 @@ router.post(
 );
 
 router.delete(
-  '/api/sessions/:id',
+  '/sessions/:id',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -298,7 +298,7 @@ router.delete(
 );
 
 router.get(
-  '/api/sessions/:id/messages',
+  '/sessions/:id/messages',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -311,7 +311,7 @@ router.get(
 );
 
 router.post(
-  '/api/sessions/:id/messages',
+  '/sessions/:id/messages',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -323,7 +323,7 @@ router.post(
 );
 
 router.get(
-  '/api/sessions/:id/files',
+  '/sessions/:id/files',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -337,7 +337,7 @@ router.get(
 );
 
 router.get(
-  '/api/sessions/:id/files/content',
+  '/sessions/:id/files/content',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -400,7 +400,7 @@ router.get(
 );
 
 router.put(
-  '/api/sessions/:id/files/content',
+  '/sessions/:id/files/content',
   asyncHandler(async (req, res) => {
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
@@ -465,7 +465,7 @@ router.put(
 );
 
 router.get(
-  '/api/sessions/:sessionId/attachments/:attachmentId',
+  '/sessions/:sessionId/attachments/:attachmentId',
   asyncHandler(async (req, res) => {
     const { sessionId, attachmentId } = req.params;
     const session = findSessionOr404(sessionId, req, res);

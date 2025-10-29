@@ -44,7 +44,7 @@ function ensureAnotherAdminExists(excludeUserId?: string): boolean {
 router.use(requireAdmin);
 
 router.get(
-  "/api/users",
+  "/users",
   asyncHandler(async (_req, res) => {
     const users = listAllUsers().map(toPublicUser);
     res.json({ users });
@@ -52,7 +52,7 @@ router.get(
 );
 
 router.post(
-  "/api/users",
+  "/users",
   asyncHandler(async (req, res) => {
     const parsed = createUserSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -84,7 +84,7 @@ router.post(
 );
 
 router.get(
-  "/api/users/:id",
+  "/users/:id",
   asyncHandler(async (req, res) => {
     const user = database.getUserById(req.params.id);
     if (!user) {
@@ -97,7 +97,7 @@ router.get(
 );
 
 router.put(
-  "/api/users/:id",
+  "/users/:id",
   asyncHandler(async (req, res) => {
     const parsed = updateUserSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -144,7 +144,7 @@ router.put(
 );
 
 router.delete(
-  "/api/users/:id",
+  "/users/:id",
   asyncHandler(async (req, res) => {
     const user = database.getUserById(req.params.id);
     if (!user) {

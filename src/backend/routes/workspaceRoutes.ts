@@ -115,7 +115,7 @@ const describeWorkspace = (sessionId: string, workspacePath: string) => {
 };
 
 router.get(
-  "/api/sessions/:id/workspace",
+  "/sessions/:id/workspace",
   asyncHandler(async (req, res) => {
     const session = database.getSession(req.params.id);
     if (!session || session.userId !== req.user!.id) {
@@ -132,7 +132,7 @@ router.get(
 );
 
 router.post(
-  "/api/sessions/:id/workspace",
+  "/sessions/:id/workspace",
   asyncHandler(async (req, res) => {
     const session = database.getSession(req.params.id);
     if (!session || session.userId !== req.user!.id) {
@@ -226,7 +226,7 @@ const toDirectoryEntries = (
 };
 
 router.get(
-  "/api/sessions/:id/workspace/browse",
+  "/sessions/:id/workspace/browse",
   asyncHandler(async (req, res) => {
     const session = database.getSession(req.params.id);
     if (!session || session.userId !== req.user!.id) {

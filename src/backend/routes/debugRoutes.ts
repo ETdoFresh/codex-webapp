@@ -6,7 +6,7 @@ const router = Router();
 
 router.use(requireAdmin);
 
-router.get('/api/debug/stream-events', (_req, res) => {
+router.get('/debug/stream-events', (_req, res) => {
   res.json({ events: getStreamDebugEvents() });
 });
 

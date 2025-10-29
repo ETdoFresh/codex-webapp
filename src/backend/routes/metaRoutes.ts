@@ -29,11 +29,11 @@ const metaUpdateSchema = z
     }
   );
 
-router.get('/api/meta', (_req: Request, res: Response) => {
+router.get('/meta', (_req: Request, res: Response) => {
   res.json(getCodexMeta());
 });
 
-router.patch('/api/meta', (req: Request, res: Response) => {
+router.patch('/meta', (req: Request, res: Response) => {
   if (!req.user?.isAdmin) {
     res.status(403).json({ error: 'AdminAccessRequired' });
     return;

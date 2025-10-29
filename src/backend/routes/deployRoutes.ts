@@ -99,7 +99,7 @@ const maskEnvVars = (env?: DeployEnvVar[]): DeployEnvVar[] | undefined => {
   }));
 };
 
-router.get("/api/deploy/config", (_req: Request, res: Response) => {
+router.get("/deploy/config", (_req: Request, res: Response) => {
   const stored = database.getDeployConfig();
   if (!stored) {
     res.status(404).json({ error: "Dokploy configuration not found." });
@@ -113,7 +113,7 @@ router.get("/api/deploy/config", (_req: Request, res: Response) => {
   });
 });
 
-router.put("/api/deploy/config", (req: Request, res: Response) => {
+router.put("/deploy/config", (req: Request, res: Response) => {
   const parsed = configSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     const { formErrors, fieldErrors } = parsed.error.flatten();
@@ -173,7 +173,7 @@ router.put("/api/deploy/config", (req: Request, res: Response) => {
   });
 });
 
-router.post("/api/deploy/test", async (req: Request, res: Response) => {
+router.post("/deploy/test", async (req: Request, res: Response) => {
   try {
     const { config } = loadConfigOrThrow();
     const apiKeyOverride = typeof req.body?.apiKey === "string" ? req.body.apiKey : undefined;
@@ -192,7 +192,7 @@ router.post("/api/deploy/test", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/api/deploy/sync", async (_req: Request, res: Response) => {
+router.post("/deploy/sync", async (_req: Request, res: Response) => {
   try {
     const stored = loadConfigOrThrow();
     const apiKey = database.getDeployApiKey();
@@ -217,7 +217,7 @@ router.post("/api/deploy/sync", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/api/deploy/deploy", async (_req: Request, res: Response) => {
+router.post("/deploy/deploy", async (_req: Request, res: Response) => {
   try {
     const stored = loadConfigOrThrow();
     const apiKey = database.getDeployApiKey();
@@ -244,7 +244,7 @@ router.post("/api/deploy/deploy", async (_req: Request, res: Response) => {
   }
 });
 
-router.get("/api/deploy/projects", async (_req: Request, res: Response) => {
+router.get("/deploy/projects", async (_req: Request, res: Response) => {
   try {
     const stored = loadConfigOrThrow();
     const apiKey = database.getDeployApiKey();
@@ -262,7 +262,7 @@ router.get("/api/deploy/projects", async (_req: Request, res: Response) => {
   }
 });
 
-router.get("/api/deploy/applications", async (req: Request, res: Response) => {
+router.get("/deploy/applications", async (req: Request, res: Response) => {
   try {
     const stored = loadConfigOrThrow();
     const apiKey = database.getDeployApiKey();
@@ -291,7 +291,7 @@ router.get("/api/deploy/applications", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/api/deploy/upload", async (req: Request, res: Response) => {
+router.post("/deploy/upload", async (req: Request, res: Response) => {
   try {
     const stored = loadConfigOrThrow();
     const workspaceRoot =
@@ -337,7 +337,7 @@ router.post("/api/deploy/upload", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/api/deploy/artifacts/:key", (req: Request, res: Response) => {
+router.get("/deploy/artifacts/:key", (req: Request, res: Response) => {
   try {
     const filePath = getArtifactPath(req.params.key ?? "");
     if (!fs.existsSync(filePath)) {

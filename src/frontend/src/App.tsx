@@ -2256,6 +2256,15 @@ function AuthenticatedApp() {
           <StatusChip status={health.status} lastUpdated={health.lastUpdated} />
           <div className="user-badge">
             <span className="user-name">{user?.username}</span>
+            {user?.isAdmin ? (
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setChatViewMode("admin")}
+              >
+                Admin
+              </button>
+            ) : null}
             <button
               type="button"
               className="ghost-button logout-button"
@@ -2496,18 +2505,6 @@ function AuthenticatedApp() {
                     >
                       Deploy
                     </button>
-                    {user?.isAdmin ? (
-                      <button
-                        type="button"
-                        className={`chat-view-toggle-button${
-                          isAdminView ? " active" : ""
-                        }`}
-                        onClick={() => setChatViewMode("admin")}
-                        aria-pressed={isAdminView}
-                      >
-                        Admin
-                      </button>
-                    ) : null}
                   </div>
                 </div>
               </header>

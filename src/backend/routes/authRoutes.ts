@@ -70,7 +70,7 @@ const isRateLimited = (ip: string | undefined): boolean => {
 };
 
 router.post(
-  "/api/auth/login",
+  "/auth/login",
   asyncHandler(async (req, res) => {
     const parsed = loginSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -111,7 +111,7 @@ router.post(
 );
 
 router.post(
-  "/api/auth/logout",
+  "/auth/logout",
   requireAuth,
   asyncHandler(async (req, res) => {
     if (req.loginSession) {
@@ -123,7 +123,7 @@ router.post(
 );
 
 router.get(
-  "/api/auth/me",
+  "/auth/me",
   requireAuth,
   asyncHandler(async (req, res) => {
     res.json({ user: toPublicUser(req.user!) });
@@ -131,7 +131,7 @@ router.get(
 );
 
 router.post(
-  "/api/auth/password",
+  "/auth/password",
   requireAuth,
   asyncHandler(async (req, res) => {
     const parsed = passwordChangeSchema.safeParse(req.body ?? {});

@@ -19,14 +19,14 @@ export async function registerBackend(app: Application): Promise<void> {
   app.use(cookieParser());
   app.use(loadUserFromSession);
   app.use(healthRoutes);
-  app.use(authRoutes);
-  app.use(metaRoutes);
-  app.use(workspaceRoutes);
-  app.use(sessionRoutes);
-  app.use(debugRoutes);
-  app.use(deployRoutes);
-  app.use(userRoutes);
-  app.use(userAuthFilesRoutes);
+  app.use('/api', authRoutes);
+  app.use('/api', metaRoutes);
+  app.use('/api', workspaceRoutes);
+  app.use('/api', sessionRoutes);
+  app.use('/api', debugRoutes);
+  app.use('/api', deployRoutes);
+  app.use('/api', userRoutes);
+  app.use('/api', userAuthFilesRoutes);
 
   app.use(
     (error: unknown, _req: Request, res: Response, _next: NextFunction) => {
