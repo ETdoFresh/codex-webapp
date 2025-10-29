@@ -11,8 +11,11 @@ import {
   getDefaultWorkspacePath,
 } from "../workspaces";
 import { toSessionResponse } from "../types/api";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
+
+router.use(requireAuth);
 
 const updateWorkspaceSchema = z.object({
   path: z
@@ -115,7 +118,7 @@ router.get(
   "/api/sessions/:id/workspace",
   asyncHandler(async (req, res) => {
     const session = database.getSession(req.params.id);
-    if (!session) {
+    if (!session || session.userId !== req.user!.id) {
       res.status(404).json({ error: "Session not found" });
       return;
     }
@@ -132,7 +135,7 @@ router.post(
   "/api/sessions/:id/workspace",
   asyncHandler(async (req, res) => {
     const session = database.getSession(req.params.id);
-    if (!session) {
+    if (!session || session.userId !== req.user!.id) {
       res.status(404).json({ error: "Session not found" });
       return;
     }
@@ -226,7 +229,7 @@ router.get(
   "/api/sessions/:id/workspace/browse",
   asyncHandler(async (req, res) => {
     const session = database.getSession(req.params.id);
-    if (!session) {
+    if (!session || session.userId !== req.user!.id) {
       res.status(404).json({ error: "Session not found" });
       return;
     }

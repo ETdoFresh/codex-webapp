@@ -7,6 +7,7 @@ import type { SessionRecord } from './types/database';
 import { ensureWorkspaceDirectory } from './workspaces';
 import { getCodexMeta } from './settings';
 import type IAgent from './interfaces/IAgent';
+import type { AgentRunOptions } from './interfaces/IAgent';
 
 type ThreadCacheEntry = {
   thread: Thread;
@@ -34,6 +35,60 @@ const resolvedSandboxEnv = process.env.CODEX_SANDBOX_MODE as
 const sandboxMode: 'read-only' | 'workspace-write' | 'danger-full-access' =
   resolvedSandboxEnv ??
   (process.platform === 'win32' ? 'danger-full-access' : 'workspace-write');
+
+const applyEnvOverrides = (env: AgentRunOptions['env']): (() => void) => {
+  if (!env || Object.keys(env).length === 0) {
+    return () => {};
+  }
+
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(env)) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+
+  return () => {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  };
+};
+
+const withEnvOverrides = async <T>(
+  env: AgentRunOptions['env'],
+  action: () => Promise<T>,
+): Promise<T> => {
+  const restore = applyEnvOverrides(env);
+  try {
+    return await action();
+  } finally {
+    restore();
+  }
+};
+
+const wrapGeneratorWithEnv = <T>(
+  env: AgentRunOptions['env'],
+  generator: AsyncGenerator<T>,
+): AsyncGenerator<T> => {
+  if (!env || Object.keys(env).length === 0) {
+    return generator;
+  }
+
+  return (async function* wrapped() {
+    const restore = applyEnvOverrides(env);
+    try {
+      for await (const item of generator) {
+        yield item;
+      }
+    } finally {
+      restore();
+    }
+  })();
+};
 
 class CodexManager implements IAgent {
   private codexInstance: Codex | null = null;
@@ -103,22 +158,29 @@ class CodexManager implements IAgent {
 
   async runTurn(
     session: SessionRecord,
-    input: string
+    input: string,
+    options: AgentRunOptions = {},
   ): Promise<RunTurnResult> {
-    const thread = await this.ensureThread(session);
-    const result = await thread.run(input);
-    return { result, threadId: thread.id };
+    return withEnvOverrides(options.env, async () => {
+      const thread = await this.ensureThread(session);
+      const result = await thread.run(input);
+      return { result, threadId: thread.id };
+    });
   }
 
   async runTurnStreamed(
     session: SessionRecord,
-    input: string
+    input: string,
+    options: AgentRunOptions = {}
   ): Promise<RunTurnStreamedResult> {
-    const thread = await this.ensureThread(session);
-    const streamed = await (thread as unknown as {
-      runStreamed: (input: string) => Promise<{ events: AsyncGenerator<CodexThreadEvent> }>;
-    }).runStreamed(input);
-    return { events: streamed.events, thread };
+    return withEnvOverrides(options.env, async () => {
+      const thread = await this.ensureThread(session);
+      const streamed = await (thread as unknown as {
+        runStreamed: (input: string) => Promise<{ events: AsyncGenerator<CodexThreadEvent> }>;
+      }).runStreamed(input);
+      const events = wrapGeneratorWithEnv(options.env, streamed.events);
+      return { events, thread };
+    });
   }
 
   forgetSession(sessionId: string) {

@@ -7,6 +7,7 @@ import type { SessionRecord } from './types/database';
 import { ensureWorkspaceDirectory } from './workspaces';
 import { getCodexMeta } from './settings';
 import type IAgent from './interfaces/IAgent';
+import type { AgentRunOptions } from './interfaces/IAgent';
 
 type SessionCacheEntry = {
   sessionId: string | null;
@@ -140,7 +141,8 @@ class DroidCliManager implements IAgent {
   private startExecution(
     session: SessionRecord,
     prompt: string,
-    reuseSession: boolean
+    reuseSession: boolean,
+    envOverrides?: Record<string, string>
   ): ExecutionController {
     const workspaceDirectory = ensureWorkspaceDirectory(session.id);
     const meta = getCodexMeta();
@@ -164,7 +166,7 @@ class DroidCliManager implements IAgent {
 
     const child = spawn(this.getBinaryPath(), args, {
       cwd: workspaceDirectory,
-      env: { ...process.env },
+      env: { ...process.env, ...(envOverrides ?? {}) },
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
@@ -435,8 +437,12 @@ class DroidCliManager implements IAgent {
     };
   }
 
-  async runTurn(session: SessionRecord, input: string): Promise<RunTurnResult> {
-    const controller = this.startExecution(session, input, true);
+  async runTurn(
+    session: SessionRecord,
+    input: string,
+    options: AgentRunOptions = {}
+  ): Promise<RunTurnResult> {
+    const controller = this.startExecution(session, input, true, options.env);
     const events = controller.events;
 
     for await (const _event of events) {
@@ -469,8 +475,12 @@ class DroidCliManager implements IAgent {
     };
   }
 
-  async runTurnStreamed(session: SessionRecord, input: string): Promise<RunTurnStreamedResult> {
-    const controller = this.startExecution(session, input, true);
+  async runTurnStreamed(
+    session: SessionRecord,
+    input: string,
+    options: AgentRunOptions = {}
+  ): Promise<RunTurnStreamedResult> {
+    const controller = this.startExecution(session, input, true, options.env);
     return {
       events: controller.events,
       thread: null as any

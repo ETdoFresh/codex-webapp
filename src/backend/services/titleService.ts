@@ -4,6 +4,7 @@ import { claudeManager } from "../claudeManager";
 import { getCodexMeta } from "../settings";
 import type { SessionRecord } from "../types/database";
 import { droidCliManager } from "../droidCliManager";
+import { synchronizeUserAuthFiles } from "./userAuthManager";
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_TITLE_WORDS = 12;
@@ -38,6 +39,29 @@ const clampWords = (value: string): string => {
     return value;
   }
   return `${words.slice(0, MAX_TITLE_WORDS).join(" ")}…`;
+};
+
+const applySessionAuthEnv = (session: SessionRecord): (() => void) => {
+  if (!session.userId) {
+    return () => {};
+  }
+
+  const { env } = synchronizeUserAuthFiles(session.userId);
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(env)) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+
+  return () => {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  };
 };
 
 const titleCase = (value: string): string =>
@@ -180,12 +204,17 @@ export async function generateSessionTitle(
             return codexManager;
         }
       })();
-      const suggestion = await manager.generateTitleSuggestion(
-        session,
-        serialized,
-      );
-      if (suggestion && suggestion.trim().length > 0) {
-        return clampTitle(suggestion, fallbackTitle);
+      const restoreEnv = applySessionAuthEnv(session);
+      try {
+        const suggestion = await manager.generateTitleSuggestion(
+          session,
+          serialized,
+        );
+        if (suggestion && suggestion.trim().length > 0) {
+          return clampTitle(suggestion, fallbackTitle);
+        }
+      } finally {
+        restoreEnv();
       }
     } catch (error) {
       console.warn(

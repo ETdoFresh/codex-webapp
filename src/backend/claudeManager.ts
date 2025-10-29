@@ -12,6 +12,7 @@ import type { SessionRecord } from './types/database';
 import { ensureWorkspaceDirectory } from './workspaces';
 import { getCodexMeta } from './settings';
 import type IAgent from './interfaces/IAgent';
+import type { AgentRunOptions } from './interfaces/IAgent';
 import type { CodexThreadEvent, RunTurnResult, RunTurnStreamedResult } from './types/codex';
 
 type SessionCacheEntry = {
@@ -26,6 +27,58 @@ class ClaudeManager implements IAgent {
 
   constructor() {
     this.sessions = new Map();
+  }
+
+  private applyEnv(env: AgentRunOptions['env']): () => void {
+    if (!env || Object.keys(env).length === 0) {
+      return () => {};
+    }
+
+    const previous = new Map<string, string | undefined>();
+    for (const [key, value] of Object.entries(env)) {
+      previous.set(key, process.env[key]);
+      process.env[key] = value;
+    }
+
+    return () => {
+      for (const [key, value] of previous.entries()) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    };
+  }
+
+  private async withEnv<T>(env: AgentRunOptions['env'], fn: () => Promise<T>): Promise<T> {
+    const restore = this.applyEnv(env);
+    try {
+      return await fn();
+    } finally {
+      restore();
+    }
+  }
+
+  private wrapGeneratorWithEnv<T>(
+    env: AgentRunOptions['env'],
+    generator: AsyncGenerator<T>,
+  ): AsyncGenerator<T> {
+    if (!env || Object.keys(env).length === 0) {
+      return generator;
+    }
+
+    const self = this;
+    return (async function* wrapped() {
+      const restore = self.applyEnv(env);
+      try {
+        for await (const item of generator) {
+          yield item;
+        }
+      } finally {
+        restore();
+      }
+    })();
   }
 
   private getSessionFromCache(sessionKey: string): SessionCacheEntry | null {
@@ -257,62 +310,73 @@ class ClaudeManager implements IAgent {
     }
   }
 
-  async runTurn(session: SessionRecord, input: string): Promise<RunTurnResult> {
-    const workspaceDirectory = ensureWorkspaceDirectory(session.id);
-    const cached = this.getSessionFromCache(session.id);
-    const resumeSessionId = session.codexThreadId ?? cached?.claudeSessionId ?? null;
-    const resumeAt = cached?.lastAssistantMessageId ?? null;
+  async runTurn(
+    session: SessionRecord,
+    input: string,
+    options: AgentRunOptions = {},
+  ): Promise<RunTurnResult> {
+    return this.withEnv(options.env, async () => {
+      const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+      const cached = this.getSessionFromCache(session.id);
+      const resumeSessionId = session.codexThreadId ?? cached?.claudeSessionId ?? null;
+      const resumeAt = cached?.lastAssistantMessageId ?? null;
 
-    const options = this.createQueryOptions(workspaceDirectory, resumeSessionId, resumeAt);
-    const queryInstance = query({ prompt: input, options });
+      const queryOptions = this.createQueryOptions(workspaceDirectory, resumeSessionId, resumeAt);
+      const queryInstance = query({ prompt: input, options: queryOptions });
 
-    let resultMessage: SDKResultMessage | null = null;
-    let claudeSessionId = resumeSessionId;
-    let lastAssistantMessageId = resumeAt;
+      let resultMessage: SDKResultMessage | null = null;
+      let claudeSessionId = resumeSessionId;
+      let lastAssistantMessageId = resumeAt;
 
-    try {
-      for await (const message of queryInstance) {
-        if (message.session_id && message.session_id !== claudeSessionId) {
-          claudeSessionId = message.session_id;
+      try {
+        for await (const message of queryInstance) {
+          if (message.session_id && message.session_id !== claudeSessionId) {
+            claudeSessionId = message.session_id;
+          }
+
+          if (message.type === 'assistant') {
+            lastAssistantMessageId = message.message.id ?? lastAssistantMessageId;
+          }
+
+          if (message.type === 'result') {
+            resultMessage = message as SDKResultMessage;
+          }
         }
-
-        if (message.type === 'assistant') {
-          lastAssistantMessageId = message.message.id ?? lastAssistantMessageId;
-        }
-
-        if (message.type === 'result') {
-          resultMessage = message as SDKResultMessage;
-        }
+      } catch (error) {
+        throw new Error(this.normalizeClaudeError(error));
       }
-    } catch (error) {
-      throw new Error(this.normalizeClaudeError(error));
-    }
 
-    this.setSessionCache(session.id, claudeSessionId ?? null, lastAssistantMessageId ?? null);
+      this.setSessionCache(session.id, claudeSessionId ?? null, lastAssistantMessageId ?? null);
 
-    if (!resultMessage) {
-      throw new Error('Claude run did not produce a result.');
-    }
+      if (!resultMessage) {
+        throw new Error('Claude run did not produce a result.');
+      }
 
-    return {
-      result: resultMessage as any,
-      threadId: claudeSessionId ?? null,
-    };
+      return {
+        result: resultMessage as any,
+        threadId: claudeSessionId ?? null,
+      };
+    });
   }
 
-  async runTurnStreamed(session: SessionRecord, input: string): Promise<RunTurnStreamedResult> {
-    const workspaceDirectory = ensureWorkspaceDirectory(session.id);
-    const cached = this.getSessionFromCache(session.id);
-    const resumeSessionId = session.codexThreadId ?? cached?.claudeSessionId ?? null;
-    const resumeAt = cached?.lastAssistantMessageId ?? null;
+  async runTurnStreamed(
+    session: SessionRecord,
+    input: string,
+    options: AgentRunOptions = {},
+  ): Promise<RunTurnStreamedResult> {
+    const generator = await this.withEnv(options.env, async () => {
+      const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+      const cached = this.getSessionFromCache(session.id);
+      const resumeSessionId = session.codexThreadId ?? cached?.claudeSessionId ?? null;
+      const resumeAt = cached?.lastAssistantMessageId ?? null;
 
-    const options = this.createQueryOptions(workspaceDirectory, resumeSessionId, resumeAt);
-    const queryInstance = query({ prompt: input, options });
-
-    const mappedEvents = this.mapClaudeEvents(session.id, queryInstance);
+      const queryOptions = this.createQueryOptions(workspaceDirectory, resumeSessionId, resumeAt);
+      const queryInstance = query({ prompt: input, options: queryOptions });
+      return this.mapClaudeEvents(session.id, queryInstance);
+    });
 
     return {
-      events: mappedEvents,
+      events: this.wrapGeneratorWithEnv(options.env, generator),
       thread: null as any,
     };
   }

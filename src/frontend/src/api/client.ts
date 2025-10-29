@@ -22,6 +22,19 @@ import type {
   DeployProjectsResponse,
   DeployTestResponse,
   DeployUploadResponse,
+  AuthUser,
+  LoginRequest,
+  LoginResponse,
+  MeResponse,
+  UserListResponse,
+  UserDetailResponse,
+  CreateUserRequest,
+  UpdateUserRequest,
+  ListUserAuthFilesResponse,
+  SaveUserAuthFileRequest,
+  UserAuthFileDetailResponse,
+  UserAuthFileSummary,
+  UserAuthFileDetail,
 } from "./types";
 
 export class ApiError<T = unknown> extends Error {
@@ -42,6 +55,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       Accept: "application/json",
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
     },
+    credentials: "include",
     ...init,
   });
 
@@ -55,6 +69,114 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return data as T;
+}
+
+export async function login(payload: LoginRequest): Promise<AuthUser> {
+  const data = await request<LoginResponse>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return data.user;
+}
+
+export async function logout(): Promise<void> {
+  await request<void>("/api/auth/logout", {
+    method: "POST",
+  });
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser> {
+  const data = await request<MeResponse>("/api/auth/me");
+  return data.user;
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  await request<void>("/api/auth/password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export async function fetchUsers(): Promise<AuthUser[]> {
+  const data = await request<UserListResponse>("/api/users");
+  return data.users;
+}
+
+export async function createUser(requestBody: CreateUserRequest): Promise<AuthUser> {
+  const data = await request<UserDetailResponse>("/api/users", {
+    method: "POST",
+    body: JSON.stringify(requestBody),
+  });
+  return data.user;
+}
+
+export async function updateUser(
+  userId: string,
+  requestBody: UpdateUserRequest,
+): Promise<AuthUser> {
+  const data = await request<UserDetailResponse>(`/api/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(requestBody),
+  });
+  return data.user;
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  await request<void>(`/api/users/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchUserAuthFiles(
+  userId: string,
+): Promise<UserAuthFileSummary[]> {
+  const data = await request<ListUserAuthFilesResponse>(
+    `/api/users/${userId}/auth-files`,
+  );
+  return data.files;
+}
+
+export async function saveUserAuthFile(
+  userId: string,
+  provider: UserAuthFileSummary["provider"],
+  fileName: string,
+  requestBody: SaveUserAuthFileRequest,
+): Promise<UserAuthFileDetail> {
+  const data = await request<UserAuthFileDetailResponse>(
+    `/api/users/${userId}/auth-files/${provider}/${encodeURIComponent(fileName)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(requestBody),
+    },
+  );
+  return data.file;
+}
+
+export async function deleteUserAuthFile(
+  userId: string,
+  provider: UserAuthFileSummary["provider"],
+  fileName: string,
+): Promise<void> {
+  await request<void>(
+    `/api/users/${userId}/auth-files/${provider}/${encodeURIComponent(fileName)}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+export async function downloadUserAuthFile(
+  userId: string,
+  provider: UserAuthFileSummary["provider"],
+  fileName: string,
+): Promise<UserAuthFileDetail> {
+  const data = await request<UserAuthFileDetailResponse>(
+    `/api/users/${userId}/auth-files/${provider}/${encodeURIComponent(fileName)}`,
+  );
+  return data.file;
 }
 
 export async function fetchSessions(): Promise<Session[]> {

@@ -408,7 +408,7 @@ const start = async () => {
   app.disable('x-powered-by');
 
   const { default: registerBackend } = await import('./backend/index.js');
-  registerBackend(app);
+  await registerBackend(app);
   const vite = await registerFrontendMiddleware(app);
 
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {

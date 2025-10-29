@@ -9,6 +9,7 @@ export type SessionRecord = {
   updatedAt: string;
   workspacePath: string;
   titleLocked: boolean;
+  userId: string | null;
 };
 
 export type MessageRecord = {
@@ -47,4 +48,32 @@ export type DeployConfigRow = {
   config: DeployConfig;
   updatedAt: string;
   hasApiKey: boolean;
+};
+
+export type UserRecord = {
+  id: string;
+  username: string;
+  passwordHash: string;
+  isAdmin: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LoginSessionRecord = {
+  id: string;
+  userId: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
+export type UserAuthFileRecord = {
+  id: string;
+  userId: string;
+  provider: 'codex' | 'claude' | 'droid';
+  fileName: string;
+  encryptedContent: string;
+  encryptedIv: string | null;
+  encryptedTag: string | null;
+  createdAt: string;
+  updatedAt: string;
 };

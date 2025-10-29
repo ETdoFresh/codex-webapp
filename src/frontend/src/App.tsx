@@ -40,6 +40,9 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import WorkspaceRootModal from "./components/WorkspaceRootModal";
 import DeployPanel from "./components/DeployPanel";
+import { useAuth } from "./context/AuthContext";
+import LoginPage from "./pages/LoginPage";
+import AdminPanel from "./components/AdminPanel";
 
 const DEFAULT_SESSION_TITLE = "New Session";
 const THEME_STORAGE_KEY = "codex:theme";
@@ -281,7 +284,8 @@ const sortSessions = (sessions: Session[]) =>
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
 
-function App() {
+function AuthenticatedApp() {
+  const { user, logout } = useAuth();
   const health = useHealthStatus();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -303,7 +307,7 @@ function App() {
     filename: string;
   } | null>(null);
   const [chatViewMode, setChatViewMode] = useState<
-    "formatted" | "detailed" | "raw" | "editor" | "deploy"
+    "formatted" | "detailed" | "raw" | "editor" | "deploy" | "admin"
   >("formatted");
   const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(
     new Set(),
@@ -328,6 +332,7 @@ function App() {
   const isDetailedView = chatViewMode === "detailed";
   const isFileEditorView = chatViewMode === "editor";
   const isDeployView = chatViewMode === "deploy";
+  const isAdminView = chatViewMode === "admin";
 
   const persistMetaPreferences = useCallback((nextMeta: AppMeta) => {
     safeSetLocalStorageItem(LAST_PROVIDER_STORAGE_KEY, nextMeta.provider);
@@ -337,6 +342,14 @@ function App() {
       nextMeta.reasoningEffort,
     );
   }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error("Failed to log out", error);
+    }
+  }, [logout]);
 
   const toggleItemExpansion = useCallback((entryKey: string) => {
     setExpandedItemKeys((previous) => {
@@ -357,7 +370,7 @@ function App() {
 
   const updateMessages = useCallback(
     (action: SetStateAction<Message[]>) => {
-      if (!isRawView && !isDeployView) {
+      if (!isRawView && !isDeployView && !isAdminView) {
         const container = messageListRef.current;
         if (container) {
           const atBottom =
@@ -373,11 +386,11 @@ function App() {
       }
       setMessages(action);
     },
-    [isRawView, isDeployView, setMessages],
+    [isRawView, isDeployView, isAdminView, setMessages],
   );
 
   const handleMessageListScroll = useCallback(() => {
-    if (isRawView || isDeployView) {
+    if (isRawView || isDeployView || isAdminView) {
       return;
     }
 
@@ -390,10 +403,10 @@ function App() {
     if (shouldAutoScrollRef.current) {
       pendingScrollToBottomRef.current = true;
     }
-  }, [isRawView, isDeployView]);
+  }, [isRawView, isDeployView, isAdminView]);
 
   useEffect(() => {
-    if (!supportsIntersectionObserver || isRawView || isDeployView) {
+    if (!supportsIntersectionObserver || isRawView || isDeployView || isAdminView) {
       return;
     }
 
@@ -425,7 +438,7 @@ function App() {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [isRawView, isDeployView, supportsIntersectionObserver, messages.length]);
+  }, [isRawView, isDeployView, isAdminView, supportsIntersectionObserver, messages.length]);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -2241,6 +2254,16 @@ function App() {
             {theme === "dark" ? "Light mode" : "Dark mode"}
           </button>
           <StatusChip status={health.status} lastUpdated={health.lastUpdated} />
+          <div className="user-badge">
+            <span className="user-name">{user?.username}</span>
+            <button
+              type="button"
+              className="ghost-button logout-button"
+              onClick={() => void handleLogout()}
+            >
+              Log out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -2473,6 +2496,18 @@ function App() {
                     >
                       Deploy
                     </button>
+                    {user?.isAdmin ? (
+                      <button
+                        type="button"
+                        className={`chat-view-toggle-button${
+                          isAdminView ? " active" : ""
+                        }`}
+                        onClick={() => setChatViewMode("admin")}
+                        aria-pressed={isAdminView}
+                      >
+                        Admin
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </header>
@@ -2482,6 +2517,8 @@ function App() {
                   isDetailedView ? " message-panel-detailed" : ""
                 }${isFileEditorView ? " message-panel-editor" : ""}${
                   isDeployView ? " message-panel-deploy" : ""
+                }${
+                  isAdminView ? " message-panel-admin" : ""
                 }`}
               >
                 {isFileEditorView ? (
@@ -2491,6 +2528,8 @@ function App() {
                   />
                 ) : isDeployView ? (
                   <DeployPanel />
+                ) : isAdminView ? (
+                  <AdminPanel />
                 ) : isRawView ? (
                   loadingMessages ? (
                     <div className="message-placeholder">
@@ -2553,7 +2592,7 @@ function App() {
                 )}
               </div>
 
-              {!isDeployView ? (
+              {!(isDeployView || isAdminView) ? (
                 <form className="composer" onSubmit={handleSendMessage}>
                 {composerAttachments.length > 0 ? (
                   <div className="composer-attachments">
@@ -2734,6 +2773,24 @@ function App() {
       />
     </div>
   );
+}
+
+function App() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="app-loading">
+        <div className="spinner" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  return <AuthenticatedApp />;
 }
 
 export default App;

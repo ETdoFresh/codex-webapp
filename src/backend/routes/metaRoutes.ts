@@ -3,8 +3,11 @@ import { z } from 'zod';
 import { getCodexMeta, updateCodexMeta } from '../settings';
 import { codexManager } from '../codexManager';
 import { droidCliManager } from '../droidCliManager';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+router.use(requireAuth);
 
 const metaUpdateSchema = z
   .object({
@@ -31,6 +34,11 @@ router.get('/api/meta', (_req: Request, res: Response) => {
 });
 
 router.patch('/api/meta', (req: Request, res: Response) => {
+  if (!req.user?.isAdmin) {
+    res.status(403).json({ error: 'AdminAccessRequired' });
+    return;
+  }
+
   const body = metaUpdateSchema.safeParse(req.body ?? {});
   if (!body.success) {
     const { formErrors, fieldErrors } = body.error.flatten();

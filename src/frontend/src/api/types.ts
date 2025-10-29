@@ -14,6 +14,28 @@ export type Session = {
   titleLocked: boolean;
 };
 
+export type AuthUser = {
+  id: string;
+  username: string;
+  isAdmin: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LoginRequest = {
+  username: string;
+  password: string;
+  rememberMe?: boolean;
+};
+
+export type LoginResponse = {
+  user: AuthUser;
+};
+
+export type MeResponse = {
+  user: AuthUser;
+};
+
 export type MessageRole = "system" | "user" | "assistant";
 
 export type Attachment = {
@@ -191,4 +213,50 @@ export type DeployUploadResponse = {
   expiresAt: string;
   size: number;
   config: DeployConfigResult;
+};
+
+export type UserListResponse = {
+  users: AuthUser[];
+};
+
+export type UserDetailResponse = {
+  user: AuthUser;
+};
+
+export type CreateUserRequest = {
+  username: string;
+  password: string;
+  isAdmin: boolean;
+};
+
+export type UpdateUserRequest = {
+  password?: string;
+  isAdmin?: boolean;
+};
+
+export type UserAuthFileSummary = {
+  id: string;
+  provider: 'codex' | 'claude' | 'droid';
+  fileName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ListUserAuthFilesResponse = {
+  files: UserAuthFileSummary[];
+};
+
+export type SaveUserAuthFileRequest = {
+  content: string;
+};
+
+export type UserAuthFileDetail = {
+  provider: 'codex' | 'claude' | 'droid';
+  fileName: string;
+  content: string;
+  updatedAt: string;
+};
+
+export type UserAuthFileDetailResponse = {
+  file: UserAuthFileDetail;
 };

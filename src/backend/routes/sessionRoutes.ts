@@ -9,8 +9,10 @@ import { DEFAULT_SESSION_TITLE } from '../config/sessions';
 import { handleSessionMessageRequest } from '../services/sessionMessageService';
 import { ensureWorkspaceDirectory, getWorkspaceDirectory } from '../workspaces';
 import { messageToResponse, toSessionResponse } from '../types/api';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+router.use(requireAuth);
 
 const MAX_WORKSPACE_FILE_COUNT = 2000;
 const MAX_WORKSPACE_FILE_SIZE_BYTES = 512 * 1024; // 512 KB
@@ -165,9 +167,15 @@ const fileWriteSchema = z.object({
   content: z.string()
 });
 
-const findSessionOr404 = (sessionId: string, res: Response) => {
+const findSessionOr404 = (sessionId: string, req: Request, res: Response) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return null;
+  }
+
   const session = database.getSession(sessionId);
-  if (!session) {
+  if (!session || session.userId !== userId) {
     res.status(404).json({ error: 'Session not found' });
     return null;
   }
@@ -176,8 +184,10 @@ const findSessionOr404 = (sessionId: string, res: Response) => {
 
 router.get(
   '/api/sessions',
-  asyncHandler(async (_req, res) => {
-    const sessions = database.listSessions().map(toSessionResponse);
+  asyncHandler(async (req, res) => {
+    const sessions = database
+      .listSessions(req.user!.id)
+      .map(toSessionResponse);
     res.json({ sessions });
   })
 );
@@ -188,7 +198,7 @@ router.post(
     const body = optionalTitleSchema.parse(req.body);
     const title = body?.title ?? DEFAULT_SESSION_TITLE;
 
-    const session = database.createSession(title);
+    const session = database.createSession(title, req.user!.id);
     res.status(201).json({ session: toSessionResponse(session) });
   })
 );
@@ -196,7 +206,7 @@ router.post(
 router.get(
   '/api/sessions/:id',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -208,7 +218,7 @@ router.get(
 router.patch(
   '/api/sessions/:id',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -232,7 +242,7 @@ router.patch(
 router.post(
   '/api/sessions/:id/title/lock',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -251,7 +261,7 @@ router.post(
 router.post(
   '/api/sessions/:id/title/auto',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -273,7 +283,7 @@ router.post(
 router.delete(
   '/api/sessions/:id',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -290,7 +300,7 @@ router.delete(
 router.get(
   '/api/sessions/:id/messages',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -303,7 +313,7 @@ router.get(
 router.post(
   '/api/sessions/:id/messages',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -315,7 +325,7 @@ router.post(
 router.get(
   '/api/sessions/:id/files',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -329,7 +339,7 @@ router.get(
 router.get(
   '/api/sessions/:id/files/content',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -392,7 +402,7 @@ router.get(
 router.put(
   '/api/sessions/:id/files/content',
   asyncHandler(async (req, res) => {
-    const session = findSessionOr404(req.params.id, res);
+    const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
     }
@@ -458,7 +468,7 @@ router.get(
   '/api/sessions/:sessionId/attachments/:attachmentId',
   asyncHandler(async (req, res) => {
     const { sessionId, attachmentId } = req.params;
-    const session = findSessionOr404(sessionId, res);
+    const session = findSessionOr404(sessionId, req, res);
     if (!session) {
       return;
     }

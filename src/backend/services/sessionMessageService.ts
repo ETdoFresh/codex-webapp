@@ -22,6 +22,7 @@ import type { SessionRecord } from "../types/database";
 import { getStreamEventTimeout, recordStreamDebugEvent } from "./streamDebug";
 import type IAgent from "../interfaces/IAgent";
 import { droidCliManager } from "../droidCliManager";
+import { synchronizeUserAuthFiles } from "./userAuthManager";
 
 function getAgentManager(): IAgent {
   const meta = getCodexMeta();
@@ -318,7 +319,15 @@ export async function handleSessionMessageRequest(
 
   try {
     const manager = getAgentManager();
-    const { events } = await manager.runTurnStreamed(session, codexInput);
+  if (!session.userId) {
+    res.status(500).json({ error: "Session missing owner" });
+    return;
+  }
+
+  const authContext = synchronizeUserAuthFiles(session.userId);
+  const { events } = await manager.runTurnStreamed(session, codexInput, {
+    env: authContext.env,
+  });
     const iterator = events[Symbol.asyncIterator]();
 
     stopIterator = () => {

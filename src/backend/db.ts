@@ -16,6 +16,9 @@ import type {
   MessageWithAttachments,
   NewAttachmentInput,
   SessionRecord,
+  UserAuthFileRecord,
+  UserRecord,
+  LoginSessionRecord,
 } from "./types/database";
 import type { DeployConfig } from "../shared/dokploy";
 import {
@@ -30,6 +33,34 @@ type RunItemRow = {
   idx: number;
   payload: string;
   createdAt: string;
+};
+
+type UserRow = {
+  id: string;
+  username: string;
+  password_hash: string;
+  is_admin: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type LoginSessionRow = {
+  id: string;
+  user_id: string;
+  expires_at: string;
+  created_at: string;
+};
+
+type UserAuthFileRow = {
+  id: string;
+  user_id: string;
+  provider: string;
+  file_name: string;
+  encrypted_content: string;
+  encrypted_iv: string;
+  encrypted_tag: string;
+  created_at: string;
+  updated_at: string;
 };
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -128,6 +159,52 @@ const migrations: string[] = [
     api_key_tag TEXT,
     updated_at TEXT NOT NULL
   )
+`,
+  `
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)
+`,
+  `
+  CREATE TABLE IF NOT EXISTS user_auth_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    encrypted_content TEXT NOT NULL,
+    encrypted_iv TEXT,
+    encrypted_tag TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, provider, file_name)
+  )
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_user_auth_files_user ON user_auth_files(user_id)
+`,
+  `
+  CREATE TABLE IF NOT EXISTS login_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  )
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_login_sessions_user ON login_sessions(user_id)
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_login_sessions_expires ON login_sessions(expires_at)
 `
 ];
 
@@ -140,6 +217,7 @@ class SQLiteDatabase implements IDatabase {
     createdAt: string;
     updatedAt: string;
     titleLocked: number;
+    userId: string | null;
   }>;
   private readonly upsertSessionWorkspaceStmt: Statement<{
     sessionId: string;
@@ -149,7 +227,7 @@ class SQLiteDatabase implements IDatabase {
     [],
     { sessionId: string; workspacePath: string }
   >;
-  private readonly listSessionsStmt: Statement<[], SessionRecord>;
+  private readonly listSessionsStmt: Statement<{ userId: string }, SessionRecord>;
   private readonly getSessionStmt: Statement<{ id: string }, SessionRecord>;
   private readonly updateSessionTitleStmt: Statement<{
     id: string;
@@ -229,6 +307,65 @@ class SQLiteDatabase implements IDatabase {
     apiKeyTag: string | null;
     updatedAt: string;
   }>;
+  private readonly insertUserStmt: Statement<{
+    id: string;
+    username: string;
+    passwordHash: string;
+    isAdmin: number;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  private readonly listUsersStmt: Statement<[], UserRow>;
+  private readonly getUserByIdStmt: Statement<{ id: string }, UserRow>;
+  private readonly getUserByUsernameStmt: Statement<{
+    username: string;
+  }, UserRow>;
+  private readonly deleteUserStmt: Statement<{ id: string }>;
+  private readonly insertLoginSessionStmt: Statement<{
+    id: string;
+    userId: string;
+    expiresAt: string;
+    createdAt: string;
+  }>;
+  private readonly getLoginSessionStmt: Statement<
+    { id: string },
+    LoginSessionRow
+  >;
+  private readonly deleteLoginSessionStmt: Statement<{ id: string }>;
+  private readonly deleteLoginSessionsByUserStmt: Statement<{
+    userId: string;
+  }>;
+  private readonly deleteExpiredLoginSessionsStmt: Statement<{
+    now: string;
+  }>;
+  private readonly upsertUserAuthFileStmt: Statement<{
+    id: string;
+    userId: string;
+    provider: string;
+    fileName: string;
+    encryptedContent: string;
+    encryptedIv: string | null;
+    encryptedTag: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  private readonly deleteUserAuthFileStmt: Statement<{
+    userId: string;
+    provider: string;
+    fileName: string;
+  }>;
+  private readonly listUserAuthFilesStmt: Statement<
+    { userId: string },
+    UserAuthFileRow
+  >;
+  private readonly getUserAuthFileStmt: Statement<
+    {
+      userId: string;
+      provider: string;
+      fileName: string;
+    },
+    UserAuthFileRow
+  >;
 
   constructor(private readonly workspace: IWorkspace) {
     this.db = new Database(databasePath);
@@ -251,7 +388,8 @@ class SQLiteDatabase implements IDatabase {
         codex_thread_id,
         created_at,
         updated_at,
-        title_locked
+        title_locked,
+        user_id
       )
       VALUES (
         @id,
@@ -259,7 +397,8 @@ class SQLiteDatabase implements IDatabase {
         @codexThreadId,
         @createdAt,
         @updatedAt,
-        @titleLocked
+        @titleLocked,
+        @userId
       )
     `);
     this.listSessionsStmt = this.db.prepare(`
@@ -270,9 +409,11 @@ class SQLiteDatabase implements IDatabase {
         s.created_at as createdAt,
         s.updated_at as updatedAt,
         COALESCE(sw.workspace_path, '') as workspacePath,
-        s.title_locked as titleLocked
+        s.title_locked as titleLocked,
+        s.user_id as userId
       FROM sessions s
       LEFT JOIN session_workspaces sw ON sw.session_id = s.id
+      WHERE s.user_id = @userId
       ORDER BY s.updated_at DESC
     `);
     this.getSessionStmt = this.db.prepare(`
@@ -283,7 +424,8 @@ class SQLiteDatabase implements IDatabase {
         s.created_at as createdAt,
         s.updated_at as updatedAt,
         COALESCE(sw.workspace_path, '') as workspacePath,
-        s.title_locked as titleLocked
+        s.title_locked as titleLocked,
+        s.user_id as userId
       FROM sessions s
       LEFT JOIN session_workspaces sw ON sw.session_id = s.id
       WHERE s.id = @id
@@ -441,6 +583,155 @@ class SQLiteDatabase implements IDatabase {
         api_key_tag = COALESCE(excluded.api_key_tag, deploy_configs.api_key_tag),
         updated_at = excluded.updated_at
     `);
+    this.insertUserStmt = this.db.prepare(`
+      INSERT INTO users (
+        id,
+        username,
+        password_hash,
+        is_admin,
+        created_at,
+        updated_at
+      ) VALUES (
+        @id,
+        @username,
+        @passwordHash,
+        @isAdmin,
+        @createdAt,
+        @updatedAt
+      )
+    `);
+    this.listUsersStmt = this.db.prepare(`
+      SELECT
+        id,
+        username,
+        password_hash,
+        is_admin,
+        created_at,
+        updated_at
+      FROM users
+      ORDER BY created_at ASC
+    `);
+    this.getUserByIdStmt = this.db.prepare(`
+      SELECT
+        id,
+        username,
+        password_hash,
+        is_admin,
+        created_at,
+        updated_at
+      FROM users
+      WHERE id = @id
+    `);
+    this.getUserByUsernameStmt = this.db.prepare(`
+      SELECT
+        id,
+        username,
+        password_hash,
+        is_admin,
+        created_at,
+        updated_at
+      FROM users
+      WHERE username = @username
+    `);
+    this.deleteUserStmt = this.db.prepare(`
+      DELETE FROM users
+      WHERE id = @id
+    `);
+    this.insertLoginSessionStmt = this.db.prepare(`
+      INSERT INTO login_sessions (
+        id,
+        user_id,
+        expires_at,
+        created_at
+      ) VALUES (
+        @id,
+        @userId,
+        @expiresAt,
+        @createdAt
+      )
+    `);
+    this.getLoginSessionStmt = this.db.prepare(`
+      SELECT
+        id,
+        user_id,
+        expires_at,
+        created_at
+      FROM login_sessions
+      WHERE id = @id
+    `);
+    this.deleteLoginSessionStmt = this.db.prepare(`
+      DELETE FROM login_sessions
+      WHERE id = @id
+    `);
+    this.deleteLoginSessionsByUserStmt = this.db.prepare(`
+      DELETE FROM login_sessions
+      WHERE user_id = @userId
+    `);
+    this.deleteExpiredLoginSessionsStmt = this.db.prepare(`
+      DELETE FROM login_sessions
+      WHERE expires_at <= @now
+    `);
+    this.upsertUserAuthFileStmt = this.db.prepare(`
+      INSERT INTO user_auth_files (
+        id,
+        user_id,
+        provider,
+        file_name,
+        encrypted_content,
+        encrypted_iv,
+        encrypted_tag,
+        created_at,
+        updated_at
+      ) VALUES (
+        @id,
+        @userId,
+        @provider,
+        @fileName,
+        @encryptedContent,
+        @encryptedIv,
+        @encryptedTag,
+        @createdAt,
+        @updatedAt
+      )
+      ON CONFLICT(user_id, provider, file_name) DO UPDATE SET
+        encrypted_content = excluded.encrypted_content,
+        encrypted_iv = excluded.encrypted_iv,
+        encrypted_tag = excluded.encrypted_tag,
+        updated_at = excluded.updated_at
+    `);
+    this.deleteUserAuthFileStmt = this.db.prepare(`
+      DELETE FROM user_auth_files
+      WHERE user_id = @userId AND provider = @provider AND file_name = @fileName
+    `);
+    this.listUserAuthFilesStmt = this.db.prepare(`
+      SELECT
+        id,
+        user_id,
+        provider,
+        file_name,
+        encrypted_content,
+        encrypted_iv,
+        encrypted_tag,
+        created_at,
+        updated_at
+      FROM user_auth_files
+      WHERE user_id = @userId
+      ORDER BY provider ASC, file_name ASC
+    `);
+    this.getUserAuthFileStmt = this.db.prepare(`
+      SELECT
+        id,
+        user_id,
+        provider,
+        file_name,
+        encrypted_content,
+        encrypted_iv,
+        encrypted_tag,
+        created_at,
+        updated_at
+      FROM user_auth_files
+      WHERE user_id = @userId AND provider = @provider AND file_name = @fileName
+    `);
     this.initializeDeployConfig();
   }
 
@@ -456,6 +747,15 @@ class SQLiteDatabase implements IDatabase {
         `ALTER TABLE sessions ADD COLUMN title_locked INTEGER NOT NULL DEFAULT 0`,
       );
     }
+    const hasUserId = columns.some((column) => column.name === "user_id");
+    if (!hasUserId) {
+      this.db.exec(
+        `ALTER TABLE sessions ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE`,
+      );
+    }
+    this.db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
+    );
   }
 
   private initializeDeployConfig(): void {
@@ -545,11 +845,58 @@ class SQLiteDatabase implements IDatabase {
     return this.hydrateSessionRecord(record);
   }
 
+  private hydrateUserRow(row: UserRow | undefined | null): UserRecord | null {
+    if (!row) {
+      return null;
+    }
+    return {
+      id: row.id,
+      username: row.username,
+      passwordHash: row.password_hash,
+      isAdmin: Boolean(row.is_admin),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private hydrateLoginSessionRow(
+    row: LoginSessionRow | undefined | null,
+  ): LoginSessionRecord | null {
+    if (!row) {
+      return null;
+    }
+    return {
+      id: row.id,
+      userId: row.user_id,
+      expiresAt: row.expires_at,
+      createdAt: row.created_at,
+    };
+  }
+
+  private hydrateUserAuthFileRow(
+    row: UserAuthFileRow | undefined | null,
+  ): UserAuthFileRecord | null {
+    if (!row) {
+      return null;
+    }
+    return {
+      id: row.id,
+      userId: row.user_id,
+      provider: row.provider as UserAuthFileRecord["provider"],
+      fileName: row.file_name,
+      encryptedContent: row.encrypted_content,
+      encryptedIv: row.encrypted_iv ?? null,
+      encryptedTag: row.encrypted_tag ?? null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
   getDatabasePath(): string {
     return databasePath;
   }
 
-  createSession(title: string): SessionRecord {
+  createSession(title: string, userId: string): SessionRecord {
     const now = new Date().toISOString();
     const record: SessionRecord = {
       id: uuid(),
@@ -559,6 +906,7 @@ class SQLiteDatabase implements IDatabase {
       updatedAt: now,
       workspacePath: "",
       titleLocked: false,
+      userId,
     };
 
     this.insertSessionStmt.run({
@@ -568,6 +916,7 @@ class SQLiteDatabase implements IDatabase {
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
       titleLocked: record.titleLocked ? 1 : 0,
+      userId: record.userId,
     });
 
     const workspacePath = this.workspace.registerSessionWorkspace(
@@ -582,9 +931,9 @@ class SQLiteDatabase implements IDatabase {
     return { ...record, workspacePath };
   }
 
-  listSessions(): SessionRecord[] {
+  listSessions(userId: string): SessionRecord[] {
     return this.listSessionsStmt
-      .all()
+      .all({ userId })
       .map((record) => this.hydrateSessionRecord(record));
   }
 
@@ -788,6 +1137,214 @@ class SQLiteDatabase implements IDatabase {
     }
 
     return decryptSecret(row.api_key_cipher ?? null, row.api_key_iv, row.api_key_tag);
+  }
+
+  createUser(input: {
+    username: string;
+    passwordHash: string;
+    isAdmin: boolean;
+  }): UserRecord {
+    const now = new Date().toISOString();
+    const normalizedUsername = input.username.trim().toLowerCase();
+    const record: UserRecord = {
+      id: uuid(),
+      username: normalizedUsername,
+      passwordHash: input.passwordHash,
+      isAdmin: input.isAdmin,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.insertUserStmt.run({
+      id: record.id,
+      username: record.username,
+      passwordHash: record.passwordHash,
+      isAdmin: record.isAdmin ? 1 : 0,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    });
+
+    return record;
+  }
+
+  updateUser(id: string, updates: {
+    passwordHash?: string;
+    isAdmin?: boolean;
+  }): UserRecord | null {
+    const existing = this.getUserById(id);
+    if (!existing) {
+      return null;
+    }
+
+    const assignments: string[] = [];
+    const params: Record<string, unknown> = { id };
+
+    if (updates.passwordHash !== undefined) {
+      assignments.push("password_hash = @passwordHash");
+      params.passwordHash = updates.passwordHash;
+    }
+
+    if (updates.isAdmin !== undefined) {
+      assignments.push("is_admin = @isAdmin");
+      params.isAdmin = updates.isAdmin ? 1 : 0;
+    }
+
+    if (assignments.length === 0) {
+      return existing;
+    }
+
+    const updatedAt = new Date().toISOString();
+    assignments.push("updated_at = @updatedAt");
+    params.updatedAt = updatedAt;
+
+    const statement = this.db.prepare(
+      `UPDATE users SET ${assignments.join(", ")} WHERE id = @id`,
+    );
+    statement.run(params);
+
+    const updated = this.getUserById(id);
+    if (!updated) {
+      return null;
+    }
+    return updated;
+  }
+
+  deleteUser(id: string): boolean {
+    const result = this.deleteUserStmt.run({ id });
+    return result.changes > 0;
+  }
+
+  getUserById(id: string): UserRecord | null {
+    return this.hydrateUserRow(this.getUserByIdStmt.get({ id }));
+  }
+
+  getUserByUsername(username: string): UserRecord | null {
+    return this.hydrateUserRow(
+      this.getUserByUsernameStmt.get({ username }),
+    );
+  }
+
+  listUsers(): UserRecord[] {
+    return this.listUsersStmt
+      .all()
+      .map((row) => this.hydrateUserRow(row))
+      .filter((record): record is UserRecord => record !== null);
+  }
+
+  createLoginSession(input: {
+    userId: string;
+    expiresAt: string;
+  }): LoginSessionRecord {
+    const record: LoginSessionRecord = {
+      id: uuid(),
+      userId: input.userId,
+      expiresAt: input.expiresAt,
+      createdAt: new Date().toISOString(),
+    };
+
+    this.insertLoginSessionStmt.run({
+      id: record.id,
+      userId: record.userId,
+      expiresAt: record.expiresAt,
+      createdAt: record.createdAt,
+    });
+
+    return record;
+  }
+
+  getLoginSession(id: string): LoginSessionRecord | null {
+    return this.hydrateLoginSessionRow(
+      this.getLoginSessionStmt.get({ id }),
+    );
+  }
+
+  deleteLoginSession(id: string): void {
+    this.deleteLoginSessionStmt.run({ id });
+  }
+
+  deleteLoginSessionsByUser(userId: string): void {
+    this.deleteLoginSessionsByUserStmt.run({ userId });
+  }
+
+  deleteExpiredLoginSessions(now: string): number {
+    const result = this.deleteExpiredLoginSessionsStmt.run({ now });
+    return result.changes ?? 0;
+  }
+
+  upsertUserAuthFile(input: {
+    userId: string;
+    provider: UserAuthFileRecord["provider"];
+    fileName: string;
+    encryptedContent: string;
+    encryptedIv: string | null;
+    encryptedTag: string | null;
+  }): UserAuthFileRecord {
+    const existing = this.getUserAuthFile({
+      userId: input.userId,
+      provider: input.provider,
+      fileName: input.fileName,
+    });
+    const now = new Date().toISOString();
+    const id = existing?.id ?? uuid();
+    const createdAt = existing?.createdAt ?? now;
+
+    this.upsertUserAuthFileStmt.run({
+      id,
+      userId: input.userId,
+      provider: input.provider,
+      fileName: input.fileName,
+      encryptedContent: input.encryptedContent,
+      encryptedIv: input.encryptedIv,
+      encryptedTag: input.encryptedTag,
+      createdAt,
+      updatedAt: now,
+    });
+
+    const updated = this.getUserAuthFile({
+      userId: input.userId,
+      provider: input.provider,
+      fileName: input.fileName,
+    });
+
+    if (!updated) {
+      throw new Error("Failed to retrieve stored auth file record");
+    }
+
+    return updated;
+  }
+
+  deleteUserAuthFile(input: {
+    userId: string;
+    provider: UserAuthFileRecord["provider"];
+    fileName: string;
+  }): boolean {
+    const result = this.deleteUserAuthFileStmt.run({
+      userId: input.userId,
+      provider: input.provider,
+      fileName: input.fileName,
+    });
+    return result.changes > 0;
+  }
+
+  listUserAuthFiles(userId: string): UserAuthFileRecord[] {
+    return this.listUserAuthFilesStmt
+      .all({ userId })
+      .map((row) => this.hydrateUserAuthFileRow(row))
+      .filter((record): record is UserAuthFileRecord => record !== null);
+  }
+
+  getUserAuthFile(input: {
+    userId: string;
+    provider: UserAuthFileRecord["provider"];
+    fileName: string;
+  }): UserAuthFileRecord | null {
+    return this.hydrateUserAuthFileRow(
+      this.getUserAuthFileStmt.get({
+        userId: input.userId,
+        provider: input.provider,
+        fileName: input.fileName,
+      }),
+    );
   }
 
   deleteSession(id: string): boolean {

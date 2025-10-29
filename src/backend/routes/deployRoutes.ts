@@ -9,8 +9,10 @@ import {
   createWorkspaceArchive,
   getArtifactPath,
 } from "../services/workspaceArchiveService";
+import { requireAdmin } from "../middleware/auth";
 
 const router = Router();
+router.use(requireAdmin);
 
 const envVarSchema = z.object({
   key: z.string().trim().min(1),
