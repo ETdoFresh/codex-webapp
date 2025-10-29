@@ -196,9 +196,21 @@ class ClaudeManager implements IAgent {
       options.model = model;
     }
 
-    if (process.env.CLAUDE_PATH) {
+    // Handle Claude Code executable path
+    // On Windows, don't set the path and let the SDK auto-detect
+    // The SDK handles Windows spawning better than our manual path setting
+    if (process.env.CLAUDE_PATH && process.platform !== 'win32') {
       options.pathToClaudeCodeExecutable = process.env.CLAUDE_PATH;
+    } else if (process.env.CLAUDE_PATH && process.platform === 'win32') {
+      // On Windows with explicit path, ensure proper handling
+      let claudePath = process.env.CLAUDE_PATH;
+      if (!claudePath.endsWith('.cmd') && !claudePath.endsWith('.exe') && !claudePath.endsWith('.ps1')) {
+        // Try .cmd first as it's the most compatible
+        claudePath = claudePath + '.cmd';
+      }
+      options.pathToClaudeCodeExecutable = claudePath;
     }
+    // If no CLAUDE_PATH is set, let the SDK auto-detect (works best on Windows)
 
     return options;
   }

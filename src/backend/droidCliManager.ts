@@ -97,7 +97,20 @@ class DroidCliManager implements IAgent {
 
   private getBinaryPath(): string {
     const override = process.env.DROID_PATH?.trim();
-    return override && override.length > 0 ? override : 'droid';
+
+    let binaryPath;
+    if (override && override.length > 0) {
+      binaryPath = override;
+      // On Windows with explicit path, ensure proper extension
+      if (process.platform === 'win32' && !binaryPath.endsWith('.cmd') && !binaryPath.endsWith('.exe') && !binaryPath.endsWith('.ps1')) {
+        binaryPath = binaryPath + '.cmd';
+      }
+    } else {
+      // Default to plain command name and let PATH resolution work
+      binaryPath = 'droid';
+    }
+
+    return binaryPath;
   }
 
   private getSessionFromCache(sessionKey: string): SessionCacheEntry | null {
@@ -167,7 +180,8 @@ class DroidCliManager implements IAgent {
     const child = spawn(this.getBinaryPath(), args, {
       cwd: workspaceDirectory,
       env: { ...process.env, ...(envOverrides ?? {}) },
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: process.platform === 'win32' // Use shell on Windows for proper .cmd execution
     });
 
     const queue: Array<CodexThreadEvent | typeof END_SYMBOL> = [];
