@@ -2259,8 +2259,9 @@ function AuthenticatedApp() {
             {user?.isAdmin ? (
               <button
                 type="button"
-                className="ghost-button"
-                onClick={() => setChatViewMode("admin")}
+                className={`ghost-button admin-toggle-button${isAdminView ? " active" : ""}`}
+                onClick={() => setChatViewMode(isAdminView ? "formatted" : "admin")}
+                aria-pressed={isAdminView}
               >
                 Admin
               </button>
@@ -2337,7 +2338,11 @@ function AuthenticatedApp() {
         </aside>
 
         <section className="chat-panel">
-          {activeSession ? (
+          {isAdminView ? (
+            <div className="message-panel message-panel-admin">
+              <AdminPanel />
+            </div>
+          ) : activeSession ? (
             <>
               <header className="chat-header">
                 <div className="chat-header-title">
@@ -2514,8 +2519,6 @@ function AuthenticatedApp() {
                   isDetailedView ? " message-panel-detailed" : ""
                 }${isFileEditorView ? " message-panel-editor" : ""}${
                   isDeployView ? " message-panel-deploy" : ""
-                }${
-                  isAdminView ? " message-panel-admin" : ""
                 }`}
               >
                 {isFileEditorView ? (
@@ -2525,8 +2528,6 @@ function AuthenticatedApp() {
                   />
                 ) : isDeployView ? (
                   <DeployPanel />
-                ) : isAdminView ? (
-                  <AdminPanel />
                 ) : isRawView ? (
                   loadingMessages ? (
                     <div className="message-placeholder">

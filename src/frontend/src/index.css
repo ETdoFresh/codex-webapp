@@ -2727,6 +2727,21 @@ textarea {
   padding: 0.35rem 0.9rem;
 }
 
+.admin-toggle-button {
+  padding: 0.35rem 0.9rem;
+}
+
+.admin-toggle-button.active {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-weight: 600;
+}
+
+.admin-toggle-button.active:hover:not(:disabled) {
+  background: var(--color-primary);
+  opacity: 0.9;
+}
+
 .admin-panel {
   display: grid;
   grid-template-columns: minmax(240px, 320px) 1fr;
