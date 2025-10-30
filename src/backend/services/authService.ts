@@ -11,7 +11,7 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_ADMIN_USERNAME = "etdofresh";
 const TEMP_PASSWORD_BYTES = 12;
 
-const PASSWORD_STRENGTH_REGEX = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':",.<>/?]).{8,}$/;
+const PASSWORD_STRENGTH_REGEX = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
 
 export function isPasswordStrong(password: string): boolean {
   return PASSWORD_STRENGTH_REGEX.test(password);
@@ -51,7 +51,7 @@ export async function verifyPassword(
 export function validatePasswordStrength(password: string): void {
   if (!isPasswordStrong(password)) {
     throw new Error(
-      "Password must be at least 8 characters and include a letter, number, and symbol.",
+      "Password must be at least 8 characters and include a letter and number.",
     );
   }
 }

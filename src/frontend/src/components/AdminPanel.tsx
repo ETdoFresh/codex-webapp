@@ -44,6 +44,7 @@ const AdminPanel = () => {
   const [passwordDraft, setPasswordDraft] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
   const [authSummaries, setAuthSummaries] = useState<UserAuthFileSummary[]>([]);
   const [authLoading, setAuthLoading] = useState(false);
@@ -119,10 +120,11 @@ const AdminPanel = () => {
       return;
     }
 
-    if (createUserForm.password.length < 8) {
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(createUserForm.password)) {
       setCreateUserForm((previous) => ({
         ...previous,
-        error: "Password must be at least 8 characters.",
+        error: "Password must be at least 8 characters and include a letter and number.",
       }));
       return;
     }
@@ -143,12 +145,13 @@ const AdminPanel = () => {
         submitting: false,
         error: null,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to create user", error);
+      const errorMessage = error?.body?.error || "Unable to create user.";
       setCreateUserForm((previous) => ({
         ...previous,
         submitting: false,
-        error: "Unable to create user.",
+        error: errorMessage,
       }));
     }
   };
@@ -192,20 +195,27 @@ const AdminPanel = () => {
     event.preventDefault();
     if (!selectedUser || passwordDraft.trim().length === 0) {
       setPasswordError("Password cannot be empty");
+      setPasswordSuccess(null);
       return;
     }
-    if (passwordDraft.trim().length < 8) {
-      setPasswordError("Password must be at least 8 characters.");
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
+    if (!passwordRegex.test(passwordDraft.trim())) {
+      setPasswordError("Password must be at least 8 characters and include a letter and number.");
+      setPasswordSuccess(null);
       return;
     }
     setPasswordError(null);
+    setPasswordSuccess(null);
     setPasswordSaving(true);
     try {
       await updateUser(selectedUser.id, { password: passwordDraft.trim() });
       setPasswordDraft("");
-    } catch (error) {
+      setPasswordSuccess("Password updated successfully!");
+      setTimeout(() => setPasswordSuccess(null), 3000);
+    } catch (error: any) {
       console.error("Failed to update password", error);
-      setPasswordError("Unable to update password.");
+      const errorMessage = error?.body?.error || "Unable to update password.";
+      setPasswordError(errorMessage);
     } finally {
       setPasswordSaving(false);
     }
@@ -377,6 +387,7 @@ const AdminPanel = () => {
               required
               disabled={createUserForm.submitting}
             />
+            <small className="muted">Must include a letter and number (min. 8 chars)</small>
           </label>
           <label className="checkbox">
             <input
@@ -439,16 +450,22 @@ const AdminPanel = () => {
                   <input
                     type="password"
                     value={passwordDraft}
-                    onChange={(event) => setPasswordDraft(event.target.value)}
+                    onChange={(event) => {
+                      setPasswordDraft(event.target.value);
+                      setPasswordError(null);
+                      setPasswordSuccess(null);
+                    }}
                     disabled={passwordSaving}
                     placeholder="Enter new password"
                   />
+                  <small className="muted">Must include a letter and number (min. 8 chars)</small>
                 </label>
                 <button type="submit" disabled={passwordSaving || passwordDraft.length === 0}>
                   {passwordSaving ? "Updating…" : "Update password"}
                 </button>
               </form>
               {passwordError && <div className="error-text">{passwordError}</div>}
+              {passwordSuccess && <div style={{ color: "green", fontSize: "0.9em", marginTop: "0.5em" }}>{passwordSuccess}</div>}
             </section>
 
             <section className="admin-section">
