@@ -175,12 +175,44 @@ router.put("/deploy/config", (req: Request, res: Response) => {
 
 router.post("/deploy/test", async (req: Request, res: Response) => {
   try {
-    const { config } = loadConfigOrThrow();
+    // Allow testing with unsaved credentials
+    const baseUrlOverride = typeof req.body?.baseUrl === "string" ? req.body.baseUrl : undefined;
+    const authMethodOverride = typeof req.body?.authMethod === "string" ? req.body.authMethod : undefined;
     const apiKeyOverride = typeof req.body?.apiKey === "string" ? req.body.apiKey : undefined;
-    const apiKey = apiKeyOverride ?? database.getDeployApiKey();
-    if (!apiKey) {
-      throw new Error("Dokploy API key is not configured.");
+
+    let config: DeployConfig;
+    let apiKey: string;
+
+    if (baseUrlOverride && apiKeyOverride) {
+      // Test with provided credentials (before saving)
+      config = {
+        baseUrl: baseUrlOverride,
+        authMethod: (authMethodOverride as DeployAuthMethod) || "x-api-key",
+        projectId: "",
+        serverId: null,
+        applicationId: null,
+        appName: null,
+        domain: null,
+        port: null,
+        traefikConfig: null,
+        autoDeploy: null,
+        env: [],
+        source: null,
+        build: null,
+        resources: null,
+        lastSyncedAt: null,
+      };
+      apiKey = apiKeyOverride;
+    } else {
+      // Test with saved credentials
+      const stored = loadConfigOrThrow();
+      config = stored.config;
+      apiKey = apiKeyOverride ?? database.getDeployApiKey();
+      if (!apiKey) {
+        throw new Error("Dokploy API key is not configured.");
+      }
     }
+
     const client = createDokployClient(config, apiKey);
     const result = await client.request({ method: "GET", path: "/project.all" });
     res.json({ ok: true, projects: result });

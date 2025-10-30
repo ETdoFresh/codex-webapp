@@ -45,7 +45,7 @@ import DeployPanel from "./components/DeployPanel";
 import { useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import AdminPanel from "./components/AdminPanel";
-import { DokployConfigModal } from "./components/DokployConfigModal";
+import DokployPanel from "./components/DokployPanel";
 import SessionSettingsModal, {
   type SessionSettings,
 } from "./components/SessionSettingsModal";
@@ -314,7 +314,7 @@ function AuthenticatedApp() {
     filename: string;
   } | null>(null);
   const [chatViewMode, setChatViewMode] = useState<
-    "formatted" | "detailed" | "raw" | "editor" | "deploy" | "admin" | "container"
+    "formatted" | "detailed" | "raw" | "editor" | "deploy" | "admin" | "container" | "dokploy"
   >("formatted");
   const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(
     new Set(),
@@ -328,7 +328,6 @@ function AuthenticatedApp() {
   const [titleLocking, setTitleLocking] = useState(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [sessionSettingsModalOpen, setSessionSettingsModalOpen] = useState(false);
-  const [dokployConfigModalOpen, setDokployConfigModalOpen] = useState(false);
   const [containerStatuses, setContainerStatuses] = useState<
     Record<string, { status: string; url?: string; error?: string }>
   >({});
@@ -346,6 +345,7 @@ function AuthenticatedApp() {
   const isDeployView = chatViewMode === "deploy";
   const isContainerView = chatViewMode === "container";
   const isAdminView = chatViewMode === "admin";
+  const isDokployView = chatViewMode === "dokploy";
 
   const persistMetaPreferences = useCallback((nextMeta: AppMeta) => {
     safeSetLocalStorageItem(LAST_PROVIDER_STORAGE_KEY, nextMeta.provider);
@@ -383,7 +383,7 @@ function AuthenticatedApp() {
 
   const updateMessages = useCallback(
     (action: SetStateAction<Message[]>) => {
-      if (!isRawView && !isDeployView && !isAdminView) {
+      if (!isRawView && !isDeployView && !isAdminView && !isDokployView) {
         const container = messageListRef.current;
         if (container) {
           const atBottom =
@@ -399,11 +399,11 @@ function AuthenticatedApp() {
       }
       setMessages(action);
     },
-    [isRawView, isDeployView, isAdminView, setMessages],
+    [isRawView, isDeployView, isAdminView, isDokployView, setMessages],
   );
 
   const handleMessageListScroll = useCallback(() => {
-    if (isRawView || isDeployView || isAdminView) {
+    if (isRawView || isDeployView || isAdminView || isDokployView) {
       return;
     }
 
@@ -416,10 +416,10 @@ function AuthenticatedApp() {
     if (shouldAutoScrollRef.current) {
       pendingScrollToBottomRef.current = true;
     }
-  }, [isRawView, isDeployView, isAdminView]);
+  }, [isRawView, isDeployView, isAdminView, isDokployView]);
 
   useEffect(() => {
-    if (!supportsIntersectionObserver || isRawView || isDeployView || isAdminView) {
+    if (!supportsIntersectionObserver || isRawView || isDeployView || isAdminView || isDokployView) {
       return;
     }
 
@@ -451,7 +451,7 @@ function AuthenticatedApp() {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [isRawView, isDeployView, isAdminView, supportsIntersectionObserver, messages.length]);
+  }, [isRawView, isDeployView, isAdminView, isDokployView, supportsIntersectionObserver, messages.length]);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -2325,8 +2325,9 @@ function AuthenticatedApp() {
             {user?.isAdmin ? (
               <button
                 type="button"
-                className="ghost-button dokploy-button"
-                onClick={() => setDokployConfigModalOpen(true)}
+                className={`ghost-button dokploy-toggle-button${isDokployView ? " active" : ""}`}
+                onClick={() => setChatViewMode(isDokployView ? "formatted" : "dokploy")}
+                aria-pressed={isDokployView}
               >
                 Dokploy
               </button>
@@ -2419,6 +2420,10 @@ function AuthenticatedApp() {
           {isAdminView ? (
             <div className="message-panel message-panel-admin">
               <AdminPanel />
+            </div>
+          ) : isDokployView ? (
+            <div className="message-panel message-panel-dokploy">
+              <DokployPanel />
             </div>
           ) : activeSession ? (
             <>
@@ -2887,11 +2892,6 @@ function AuthenticatedApp() {
         open={sessionSettingsModalOpen}
         onClose={() => setSessionSettingsModalOpen(false)}
         onSubmit={handleSessionSettingsSubmit}
-      />
-
-      <DokployConfigModal
-        isOpen={dokployConfigModalOpen}
-        onClose={() => setDokployConfigModalOpen(false)}
       />
     </div>
   );

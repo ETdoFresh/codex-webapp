@@ -594,12 +594,12 @@ export async function updateDeployConfig(
 }
 
 export async function testDeployConnection(
-  apiKey?: string,
+  params?: { apiKey?: string; baseUrl?: string; authMethod?: string },
 ): Promise<DeployTestResponse> {
   try {
     const data = await request<DeployTestResponse>("/api/deploy/test", {
       method: "POST",
-      body: JSON.stringify(apiKey ? { apiKey } : {}),
+      body: JSON.stringify(params || {}),
     });
     return data;
   } catch (error) {
