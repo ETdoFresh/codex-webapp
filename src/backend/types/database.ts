@@ -77,3 +77,25 @@ export type UserAuthFileRecord = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type SessionContainerRecord = {
+  id: string;
+  sessionId: string;
+  dokployAppId: string | null;
+  containerUrl: string | null;
+  status: 'creating' | 'running' | 'stopped' | 'error';
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SessionSettingsRecord = {
+  id: string;
+  sessionId: string;
+  githubRepo: string | null;
+  customEnvVars: string; // JSON string
+  dockerfilePath: string | null;
+  buildSettings: string; // JSON string
+  createdAt: string;
+  updatedAt: string;
+};

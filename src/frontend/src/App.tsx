@@ -27,6 +27,8 @@ import {
   setSessionTitleLock,
   autoUpdateSessionTitle,
   type AutoTitleMessagePayload,
+  getSessionContainerStatus,
+  createSessionContainer,
 } from "./api/client";
 import type {
   AppMeta,
@@ -43,6 +45,9 @@ import DeployPanel from "./components/DeployPanel";
 import { useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import AdminPanel from "./components/AdminPanel";
+import SessionSettingsModal, {
+  type SessionSettings,
+} from "./components/SessionSettingsModal";
 
 const DEFAULT_SESSION_TITLE = "New Session";
 const THEME_STORAGE_KEY = "codex:theme";
@@ -308,7 +313,7 @@ function AuthenticatedApp() {
     filename: string;
   } | null>(null);
   const [chatViewMode, setChatViewMode] = useState<
-    "formatted" | "detailed" | "raw" | "editor" | "deploy" | "admin"
+    "formatted" | "detailed" | "raw" | "editor" | "deploy" | "admin" | "container"
   >("formatted");
   const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(
     new Set(),
@@ -321,6 +326,10 @@ function AuthenticatedApp() {
   const [titleSaving, setTitleSaving] = useState(false);
   const [titleLocking, setTitleLocking] = useState(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
+  const [sessionSettingsModalOpen, setSessionSettingsModalOpen] = useState(false);
+  const [containerStatuses, setContainerStatuses] = useState<
+    Record<string, { status: string; url?: string; error?: string }>
+  >({});
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -333,6 +342,7 @@ function AuthenticatedApp() {
   const isDetailedView = chatViewMode === "detailed";
   const isFileEditorView = chatViewMode === "editor";
   const isDeployView = chatViewMode === "deploy";
+  const isContainerView = chatViewMode === "container";
   const isAdminView = chatViewMode === "admin";
 
   const persistMetaPreferences = useCallback((nextMeta: AppMeta) => {
@@ -552,6 +562,36 @@ function AuthenticatedApp() {
       canceled = true;
     };
   }, []);
+
+  // Poll container statuses
+  useEffect(() => {
+    if (sessions.length === 0) {
+      return;
+    }
+
+    const pollStatuses = async () => {
+      const statuses: Record<string, { status: string; url?: string; error?: string }> = {};
+
+      for (const session of sessions) {
+        try {
+          const status = await getSessionContainerStatus(session.id);
+          statuses[session.id] = status;
+        } catch (error) {
+          // Container doesn't exist yet, that's okay
+          console.debug(`No container for session ${session.id}`);
+        }
+      }
+
+      setContainerStatuses(statuses);
+    };
+
+    void pollStatuses();
+    const interval = setInterval(pollStatuses, 5000); // Poll every 5 seconds
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [sessions]);
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -1870,7 +1910,11 @@ function AuthenticatedApp() {
     textarea.form?.requestSubmit?.();
   };
 
-  const handleCreateSession = async () => {
+  const handleCreateSession = () => {
+    setSessionSettingsModalOpen(true);
+  };
+
+  const handleSessionSettingsSubmit = async (settings: SessionSettings) => {
     if (creatingSession) {
       return;
     }
@@ -1879,13 +1923,22 @@ function AuthenticatedApp() {
     setErrorNotice(null);
 
     try {
-      const session = await createSession();
+      const session = await createSession(settings);
       setSessions((prev) => sortSessions([session, ...prev]));
       setActiveSessionId(session.id);
       updateMessages([]);
       setComposerValue("");
       shouldAutoScrollRef.current = true;
       pendingScrollToBottomRef.current = true;
+      setSessionSettingsModalOpen(false);
+
+      // Create container for this session
+      try {
+        await createSessionContainer(session.id);
+      } catch (error) {
+        console.error("Failed to create container", error);
+        // Don't fail the whole operation if container creation fails
+      }
     } catch (error) {
       console.error("Failed to create session", error);
       setErrorNotice("Unable to create a new session. Please try again.");
@@ -2306,6 +2359,16 @@ function AuthenticatedApp() {
               {sessions.map((session) => {
                 const isActive = session.id === activeSessionId;
                 const shortId = session.id.slice(0, 8);
+                const containerStatus = containerStatuses[session.id];
+                const statusIndicator = containerStatus
+                  ? containerStatus.status === "running"
+                    ? "🟢"
+                    : containerStatus.status === "creating"
+                      ? "🟡"
+                      : containerStatus.status === "stopped"
+                        ? "⚪"
+                        : "🔴"
+                  : "";
                 return (
                   <li key={session.id}>
                     <button
@@ -2313,7 +2376,10 @@ function AuthenticatedApp() {
                       className={`session-item ${isActive ? "active" : ""}`}
                       onClick={() => handleSelectSession(session.id)}
                     >
-                      <span className="session-title">{session.title}</span>
+                      <span className="session-title">
+                        {statusIndicator && <span style={{ marginRight: "0.5em" }}>{statusIndicator}</span>}
+                        {session.title}
+                      </span>
                       <div className="session-meta">
                         <span className="session-timestamp">
                           {sessionDateFormatter.format(
@@ -2511,6 +2577,17 @@ function AuthenticatedApp() {
                     >
                       Deploy
                     </button>
+                    <button
+                      type="button"
+                      className={`chat-view-toggle-button${
+                        isContainerView ? " active" : ""
+                      }`}
+                      onClick={() => setChatViewMode("container")}
+                      aria-pressed={isContainerView}
+                      disabled={!containerStatuses[activeSessionId || ""]?.url}
+                    >
+                      Container
+                    </button>
                   </div>
                 </div>
               </header>
@@ -2529,6 +2606,30 @@ function AuthenticatedApp() {
                   />
                 ) : isDeployView ? (
                   <DeployPanel />
+                ) : isContainerView ? (
+                  containerStatuses[activeSessionId || ""]?.url ? (
+                    <iframe
+                      src={containerStatuses[activeSessionId || ""].url}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        border: "none",
+                      }}
+                      title="Container View"
+                    />
+                  ) : (
+                    <div className="message-placeholder">
+                      <p>Container is not ready yet.</p>
+                      <p className="muted">
+                        Status: {containerStatuses[activeSessionId || ""]?.status || "unknown"}
+                      </p>
+                      {containerStatuses[activeSessionId || ""]?.error && (
+                        <p style={{ color: "red" }}>
+                          Error: {containerStatuses[activeSessionId || ""].error}
+                        </p>
+                      )}
+                    </div>
+                  )
                 ) : isRawView ? (
                   loadingMessages ? (
                     <div className="message-placeholder">
@@ -2769,6 +2870,12 @@ function AuthenticatedApp() {
             setWorkspaceInfo(info);
           }
         }}
+      />
+
+      <SessionSettingsModal
+        open={sessionSettingsModalOpen}
+        onClose={() => setSessionSettingsModalOpen(false)}
+        onSubmit={handleSessionSettingsSubmit}
       />
     </div>
   );

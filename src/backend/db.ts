@@ -19,6 +19,8 @@ import type {
   UserAuthFileRecord,
   UserRecord,
   LoginSessionRecord,
+  SessionContainerRecord,
+  SessionSettingsRecord,
 } from "./types/database";
 import type { DeployConfig } from "../shared/dokploy";
 import {
@@ -205,6 +207,41 @@ const migrations: string[] = [
 `,
   `
   CREATE INDEX IF NOT EXISTS idx_login_sessions_expires ON login_sessions(expires_at)
+`,
+  `
+  CREATE TABLE IF NOT EXISTS session_containers (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL UNIQUE,
+    dokploy_app_id TEXT,
+    container_url TEXT,
+    status TEXT NOT NULL CHECK(status IN ('creating', 'running', 'stopped', 'error')),
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  )
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_session_containers_session ON session_containers(session_id)
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_session_containers_status ON session_containers(status)
+`,
+  `
+  CREATE TABLE IF NOT EXISTS session_settings (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL UNIQUE,
+    github_repo TEXT,
+    custom_env_vars TEXT NOT NULL DEFAULT '{}',
+    dockerfile_path TEXT,
+    build_settings TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  )
+`,
+  `
+  CREATE INDEX IF NOT EXISTS idx_session_settings_session ON session_settings(session_id)
 `
 ];
 
@@ -366,12 +403,60 @@ class SQLiteDatabase implements IDatabase {
     },
     UserAuthFileRow
   >;
+  private readonly upsertSessionContainerStmt: Statement<{
+    id: string;
+    sessionId: string;
+    dokployAppId: string | null;
+    containerUrl: string | null;
+    status: string;
+    errorMessage: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  private readonly getSessionContainerStmt: Statement<
+    { sessionId: string },
+    {
+      id: string;
+      session_id: string;
+      dokploy_app_id: string | null;
+      container_url: string | null;
+      status: string;
+      error_message: string | null;
+      created_at: string;
+      updated_at: string;
+    }
+  >;
+  private readonly deleteSessionContainerStmt: Statement<{ sessionId: string }>;
+  private readonly upsertSessionSettingsStmt: Statement<{
+    id: string;
+    sessionId: string;
+    githubRepo: string | null;
+    customEnvVars: string;
+    dockerfilePath: string | null;
+    buildSettings: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  private readonly getSessionSettingsStmt: Statement<
+    { sessionId: string },
+    {
+      id: string;
+      session_id: string;
+      github_repo: string | null;
+      custom_env_vars: string;
+      dockerfile_path: string | null;
+      build_settings: string;
+      created_at: string;
+      updated_at: string;
+    }
+  >;
 
   constructor(private readonly workspace: IWorkspace) {
     this.db = new Database(databasePath);
     this.configure();
     this.runMigrations();
     this.ensureSessionColumns();
+    this.ensureDeployConfigColumns();
     this.upsertSessionWorkspaceStmt = this.db.prepare(`
       INSERT OR REPLACE INTO session_workspaces (session_id, workspace_path)
       VALUES (@sessionId, @workspacePath)
@@ -732,6 +817,89 @@ class SQLiteDatabase implements IDatabase {
       FROM user_auth_files
       WHERE user_id = @userId AND provider = @provider AND file_name = @fileName
     `);
+    this.upsertSessionContainerStmt = this.db.prepare(`
+      INSERT INTO session_containers (
+        id,
+        session_id,
+        dokploy_app_id,
+        container_url,
+        status,
+        error_message,
+        created_at,
+        updated_at
+      ) VALUES (
+        @id,
+        @sessionId,
+        @dokployAppId,
+        @containerUrl,
+        @status,
+        @errorMessage,
+        @createdAt,
+        @updatedAt
+      )
+      ON CONFLICT(session_id) DO UPDATE SET
+        dokploy_app_id = @dokployAppId,
+        container_url = @containerUrl,
+        status = @status,
+        error_message = @errorMessage,
+        updated_at = @updatedAt
+    `);
+    this.getSessionContainerStmt = this.db.prepare(`
+      SELECT
+        id,
+        session_id,
+        dokploy_app_id,
+        container_url,
+        status,
+        error_message,
+        created_at,
+        updated_at
+      FROM session_containers
+      WHERE session_id = @sessionId
+    `);
+    this.deleteSessionContainerStmt = this.db.prepare(`
+      DELETE FROM session_containers WHERE session_id = @sessionId
+    `);
+    this.upsertSessionSettingsStmt = this.db.prepare(`
+      INSERT INTO session_settings (
+        id,
+        session_id,
+        github_repo,
+        custom_env_vars,
+        dockerfile_path,
+        build_settings,
+        created_at,
+        updated_at
+      ) VALUES (
+        @id,
+        @sessionId,
+        @githubRepo,
+        @customEnvVars,
+        @dockerfilePath,
+        @buildSettings,
+        @createdAt,
+        @updatedAt
+      )
+      ON CONFLICT(session_id) DO UPDATE SET
+        github_repo = @githubRepo,
+        custom_env_vars = @customEnvVars,
+        dockerfile_path = @dockerfilePath,
+        build_settings = @buildSettings,
+        updated_at = @updatedAt
+    `);
+    this.getSessionSettingsStmt = this.db.prepare(`
+      SELECT
+        id,
+        session_id,
+        github_repo,
+        custom_env_vars,
+        dockerfile_path,
+        build_settings,
+        created_at,
+        updated_at
+      FROM session_settings
+      WHERE session_id = @sessionId
+    `);
     this.initializeDeployConfig();
   }
 
@@ -755,6 +923,21 @@ class SQLiteDatabase implements IDatabase {
     }
     this.db.exec(
       `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
+    );
+  }
+
+  private ensureDeployConfigColumns(): void {
+    const columns = this.db
+      .prepare(`PRAGMA table_info(deploy_configs)`)
+      .all() as Array<{ name: string }>;
+    const hasSessionId = columns.some((column) => column.name === "session_id");
+    if (!hasSessionId) {
+      this.db.exec(
+        `ALTER TABLE deploy_configs ADD COLUMN session_id TEXT DEFAULT NULL`,
+      );
+    }
+    this.db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_deploy_configs_session ON deploy_configs(session_id)`,
     );
   }
 
@@ -1345,6 +1528,105 @@ class SQLiteDatabase implements IDatabase {
         fileName: input.fileName,
       }),
     );
+  }
+
+  upsertSessionContainer(input: {
+    sessionId: string;
+    dokployAppId: string | null;
+    containerUrl: string | null;
+    status: SessionContainerRecord["status"];
+    errorMessage?: string | null;
+  }): SessionContainerRecord {
+    const existing = this.getSessionContainer(input.sessionId);
+    const now = new Date().toISOString();
+    const id = existing?.id ?? uuid();
+    const createdAt = existing?.createdAt ?? now;
+
+    this.upsertSessionContainerStmt.run({
+      id,
+      sessionId: input.sessionId,
+      dokployAppId: input.dokployAppId,
+      containerUrl: input.containerUrl,
+      status: input.status,
+      errorMessage: input.errorMessage ?? null,
+      createdAt,
+      updatedAt: now,
+    });
+
+    const updated = this.getSessionContainer(input.sessionId);
+    if (!updated) {
+      throw new Error("Failed to retrieve stored session container record");
+    }
+    return updated;
+  }
+
+  getSessionContainer(sessionId: string): SessionContainerRecord | null {
+    const row = this.getSessionContainerStmt.get({ sessionId });
+    if (!row) {
+      return null;
+    }
+    return {
+      id: row.id,
+      sessionId: row.session_id,
+      dokployAppId: row.dokploy_app_id,
+      containerUrl: row.container_url,
+      status: row.status as SessionContainerRecord["status"],
+      errorMessage: row.error_message,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  deleteSessionContainer(sessionId: string): boolean {
+    const result = this.deleteSessionContainerStmt.run({ sessionId });
+    return result.changes > 0;
+  }
+
+  upsertSessionSettings(input: {
+    sessionId: string;
+    githubRepo?: string | null;
+    customEnvVars?: Record<string, string>;
+    dockerfilePath?: string | null;
+    buildSettings?: Record<string, unknown>;
+  }): SessionSettingsRecord {
+    const existing = this.getSessionSettings(input.sessionId);
+    const now = new Date().toISOString();
+    const id = existing?.id ?? uuid();
+    const createdAt = existing?.createdAt ?? now;
+
+    this.upsertSessionSettingsStmt.run({
+      id,
+      sessionId: input.sessionId,
+      githubRepo: input.githubRepo ?? null,
+      customEnvVars: JSON.stringify(input.customEnvVars ?? {}),
+      dockerfilePath: input.dockerfilePath ?? null,
+      buildSettings: JSON.stringify(input.buildSettings ?? {}),
+      createdAt,
+      updatedAt: now,
+    });
+
+    const updated = this.getSessionSettings(input.sessionId);
+    if (!updated) {
+      throw new Error("Failed to retrieve stored session settings record");
+    }
+    return updated;
+  }
+
+  getSessionSettings(sessionId: string): SessionSettingsRecord | null {
+    const row = this.getSessionSettingsStmt.get({ sessionId });
+    if (!row) {
+      return null;
+    }
+    return {
+      id: row.id,
+      sessionId: row.session_id,
+      githubRepo: row.github_repo,
+      customEnvVars: row.custom_env_vars,
+      dockerfilePath: row.dockerfile_path,
+      buildSettings: row.build_settings,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
   }
 
   deleteSession(id: string): boolean {

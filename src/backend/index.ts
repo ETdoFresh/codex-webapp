@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import healthRoutes from "./routes/healthRoutes";
 import metaRoutes from "./routes/metaRoutes";
 import sessionRoutes from "./routes/sessionRoutes";
+import sessionContainerRoutes from "./routes/sessionContainerRoutes";
 import debugRoutes from "./routes/debugRoutes";
 import workspaceRoutes from "./routes/workspaceRoutes";
 import deployRoutes from "./routes/deployRoutes";
@@ -23,6 +24,7 @@ export async function registerBackend(app: Application): Promise<void> {
   app.use('/api', metaRoutes);
   app.use('/api', workspaceRoutes);
   app.use('/api', sessionRoutes);
+  app.use('/api', sessionContainerRoutes);
   app.use('/api', debugRoutes);
   app.use('/api', deployRoutes);
   app.use('/api', userRoutes);

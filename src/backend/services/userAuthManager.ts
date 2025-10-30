@@ -103,3 +103,45 @@ export const synchronizeUserAuthFiles = (userId: string): {
 
   return { homeDir, env };
 };
+
+/**
+ * Exports user auth files as base64-encoded environment variables for container deployment
+ */
+export const exportAuthFilesAsEnvVars = (
+  userId: string,
+): Record<string, string> => {
+  const files = database.listUserAuthFiles(userId);
+  const envVars: Record<string, string> = {};
+
+  for (const record of files) {
+    const decrypted = decryptSecret(
+      record.encryptedContent,
+      record.encryptedIv,
+      record.encryptedTag,
+    );
+
+    if (!decrypted) {
+      console.warn(
+        `[codex-webapp] unable to decrypt auth file ${record.fileName} for user ${userId}`,
+      );
+      continue;
+    }
+
+    // Create env var key: AUTH_FILE_{PROVIDER}_{FILENAME}
+    const providerUpper = record.provider.toUpperCase();
+    const fileNameSafe = record.fileName
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .toUpperCase();
+    const envKey = `AUTH_FILE_${providerUpper}_${fileNameSafe}`;
+
+    // Base64 encode the file content
+    const base64Content = Buffer.from(decrypted, "utf8").toString("base64");
+
+    // Store both the content and the provider directory
+    envVars[envKey] = base64Content;
+    envVars[`${envKey}_DIR`] = providerDirectoryMap[record.provider];
+    envVars[`${envKey}_NAME`] = record.fileName;
+  }
+
+  return envVars;
+};

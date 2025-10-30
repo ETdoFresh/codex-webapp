@@ -1,0 +1,42 @@
+# Container instance Dockerfile
+# This image runs a single session instance with its own isolated environment
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apk add --no-cache \
+    git \
+    bash \
+    curl
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy application code
+COPY src ./src
+COPY shared ./shared
+
+# Create directories for workspace and data
+RUN mkdir -p /workspace /data
+
+# Copy bootstrap script
+COPY scripts/container-init.sh /usr/local/bin/container-init.sh
+RUN chmod +x /usr/local/bin/container-init.sh
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV WORKSPACE_PATH=/workspace
+ENV DATABASE_PATH=/data/container.db
+ENV BACKEND_DATA_DIR=/data
+
+# Expose port
+EXPOSE 3000
+
+# Run bootstrap script then start app
+CMD ["/bin/sh", "-c", "/usr/local/bin/container-init.sh && npm start"]

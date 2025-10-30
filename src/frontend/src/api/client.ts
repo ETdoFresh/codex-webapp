@@ -137,6 +137,41 @@ export async function impersonateUser(userId: string): Promise<AuthUser> {
   return data.user;
 }
 
+// Container management
+export async function createSessionContainer(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/container/create`, {
+    method: "POST",
+  });
+}
+
+export async function getSessionContainerStatus(
+  sessionId: string,
+): Promise<{ status: string; url?: string; error?: string }> {
+  return await request(`/api/sessions/${sessionId}/container/status`);
+}
+
+export async function getSessionContainerLogs(sessionId: string): Promise<{ logs: string }> {
+  return await request(`/api/sessions/${sessionId}/container/logs`);
+}
+
+export async function startSessionContainer(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/container/start`, {
+    method: "POST",
+  });
+}
+
+export async function stopSessionContainer(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/container/stop`, {
+    method: "POST",
+  });
+}
+
+export async function deleteSessionContainer(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/container`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchUserAuthFiles(
   userId: string,
 ): Promise<UserAuthFileSummary[]> {
@@ -386,10 +421,16 @@ export async function updateMeta(payload: {
   return normalizeMetaResponse(data);
 }
 
-export async function createSession(title?: string): Promise<Session> {
+export async function createSession(params?: {
+  title?: string;
+  githubRepo?: string;
+  customEnvVars?: Record<string, string>;
+  dockerfilePath?: string;
+  buildSettings?: Record<string, unknown>;
+}): Promise<Session> {
   const data = await request<CreateSessionResponse>("/api/sessions", {
     method: "POST",
-    body: title ? JSON.stringify({ title }) : undefined,
+    body: params ? JSON.stringify(params) : undefined,
   });
 
   return data.session;

@@ -135,6 +135,14 @@ const optionalTitleSchema = z
   })
   .optional();
 
+const createSessionSchema = z.object({
+  title: titleSchema.optional(),
+  githubRepo: z.string().trim().optional(),
+  customEnvVars: z.record(z.string()).optional(),
+  dockerfilePath: z.string().trim().optional(),
+  buildSettings: z.record(z.unknown()).optional(),
+});
+
 const updateTitleSchema = z.object({
   title: titleSchema.optional()
 });
@@ -195,10 +203,27 @@ router.get(
 router.post(
   '/sessions',
   asyncHandler(async (req, res) => {
-    const body = optionalTitleSchema.parse(req.body);
-    const title = body?.title ?? DEFAULT_SESSION_TITLE;
+    const body = createSessionSchema.parse(req.body);
+    const title = body.title ?? DEFAULT_SESSION_TITLE;
 
     const session = database.createSession(title, req.user!.id);
+
+    // Save session settings if provided
+    if (
+      body.githubRepo ||
+      body.customEnvVars ||
+      body.dockerfilePath ||
+      body.buildSettings
+    ) {
+      database.upsertSessionSettings({
+        sessionId: session.id,
+        githubRepo: body.githubRepo || null,
+        customEnvVars: body.customEnvVars || {},
+        dockerfilePath: body.dockerfilePath || null,
+        buildSettings: body.buildSettings || {},
+      });
+    }
+
     res.status(201).json({ session: toSessionResponse(session) });
   })
 );
