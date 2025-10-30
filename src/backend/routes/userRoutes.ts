@@ -2,12 +2,13 @@ import { Router } from "express";
 import { z } from "zod";
 import database from "../db";
 import asyncHandler from "../middleware/asyncHandler";
-import { requireAdmin } from "../middleware/auth";
+import { requireAdmin, setSessionCookie } from "../middleware/auth";
 import {
   findUserByUsername,
   hashPassword,
   listUsers as listAllUsers,
   validatePasswordStrength,
+  issueLoginSession,
 } from "../services/authService";
 
 const router = Router();
@@ -164,6 +165,22 @@ router.delete(
     }
 
     res.status(204).end();
+  }),
+);
+
+router.post(
+  "/users/:id/impersonate",
+  asyncHandler(async (req, res) => {
+    const user = database.getUserById(req.params.id);
+    if (!user) {
+      res.status(404).json({ error: "UserNotFound" });
+      return;
+    }
+
+    const session = issueLoginSession(user.id);
+    setSessionCookie(res, session.id);
+
+    res.json({ user: toPublicUser(user) });
   }),
 );
 

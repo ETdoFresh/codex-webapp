@@ -130,6 +130,13 @@ export async function deleteUser(userId: string): Promise<void> {
   });
 }
 
+export async function impersonateUser(userId: string): Promise<AuthUser> {
+  const data = await request<UserDetailResponse>(`/api/users/${userId}/impersonate`, {
+    method: "POST",
+  });
+  return data.user;
+}
+
 export async function fetchUserAuthFiles(
   userId: string,
 ): Promise<UserAuthFileSummary[]> {

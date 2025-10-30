@@ -8,6 +8,7 @@ import {
   updateUser,
   deleteUserAuthFile,
   downloadUserAuthFile,
+  impersonateUser,
 } from "../api/client";
 import type {
   AuthUser,
@@ -169,6 +170,16 @@ const AdminPanel = () => {
     } catch (error) {
       console.error("Failed to delete user", error);
       alert("Unable to delete user.");
+    }
+  };
+
+  const handleImpersonateUser = async (userId: string) => {
+    try {
+      await impersonateUser(userId);
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Failed to impersonate user", error);
+      alert("Unable to impersonate user.");
     }
   };
 
@@ -421,6 +432,23 @@ const AdminPanel = () => {
                 Created {new Date(selectedUser.createdAt).toLocaleString()} ·
                 Updated {new Date(selectedUser.updatedAt).toLocaleString()}
               </p>
+              {currentUser?.id !== selectedUser.id && (
+                <button
+                  type="button"
+                  onClick={() => void handleImpersonateUser(selectedUser.id)}
+                  style={{
+                    marginTop: "1em",
+                    backgroundColor: "#6366f1",
+                    color: "white",
+                    border: "none",
+                    padding: "0.5em 1em",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                  }}
+                >
+                  View Site as {selectedUser.username}
+                </button>
+              )}
             </header>
 
             <section className="admin-section">
