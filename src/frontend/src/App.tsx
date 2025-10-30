@@ -45,6 +45,7 @@ import DeployPanel from "./components/DeployPanel";
 import { useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import AdminPanel from "./components/AdminPanel";
+import { DokployConfigModal } from "./components/DokployConfigModal";
 import SessionSettingsModal, {
   type SessionSettings,
 } from "./components/SessionSettingsModal";
@@ -327,6 +328,7 @@ function AuthenticatedApp() {
   const [titleLocking, setTitleLocking] = useState(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [sessionSettingsModalOpen, setSessionSettingsModalOpen] = useState(false);
+  const [dokployConfigModalOpen, setDokployConfigModalOpen] = useState(false);
   const [containerStatuses, setContainerStatuses] = useState<
     Record<string, { status: string; url?: string; error?: string }>
   >({});
@@ -2320,6 +2322,15 @@ function AuthenticatedApp() {
                 Admin
               </button>
             ) : null}
+            {user?.isAdmin ? (
+              <button
+                type="button"
+                className="ghost-button dokploy-button"
+                onClick={() => setDokployConfigModalOpen(true)}
+              >
+                Dokploy
+              </button>
+            ) : null}
             <button
               type="button"
               className="ghost-button logout-button"
@@ -2876,6 +2887,11 @@ function AuthenticatedApp() {
         open={sessionSettingsModalOpen}
         onClose={() => setSessionSettingsModalOpen(false)}
         onSubmit={handleSessionSettingsSubmit}
+      />
+
+      <DokployConfigModal
+        isOpen={dokployConfigModalOpen}
+        onClose={() => setDokployConfigModalOpen(false)}
       />
     </div>
   );
