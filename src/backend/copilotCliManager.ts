@@ -63,7 +63,7 @@ class CopilotCliManager implements IAgent {
     const escapedPrompt = prompt.replace(/"/g, '""');
     
     // Build command string with properly quoted prompt
-    const commandString = `${binaryPath} -p "${escapedPrompt}" --allow-all-tools --add-dir "${workspaceDir}" --model ${model} --no-color`;
+    const commandString = `${binaryPath} -p "${escapedPrompt}" --agent prompt --allow-all-tools --disable-builtin-mcps --no-custom-instructions --deny-tool powershell --deny-tool view --add-dir "${workspaceDir}" --model ${model} --no-color`;
 
     console.log(`[CopilotCLI] Command: ${commandString}`);
 
