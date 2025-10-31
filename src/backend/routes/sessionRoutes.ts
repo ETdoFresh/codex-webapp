@@ -10,6 +10,9 @@ import { handleSessionMessageRequest } from '../services/sessionMessageService';
 import { ensureWorkspaceDirectory, getWorkspaceDirectory } from '../workspaces';
 import { messageToResponse, toSessionResponse } from '../types/api';
 import { requireAuth } from '../middleware/auth';
+import { createContainer } from '../services/containerManager';
+import { exportAuthFilesAsEnvVars } from '../services/userAuthManager';
+import { decryptSecret } from '../utils/secretVault';
 
 const router = Router();
 router.use(requireAuth);
@@ -141,6 +144,8 @@ const createSessionSchema = z.object({
   customEnvVars: z.record(z.string()).optional(),
   dockerfilePath: z.string().trim().optional(),
   buildSettings: z.record(z.unknown()).optional(),
+  gitRemoteUrl: z.string().trim().optional(),
+  gitBranch: z.string().trim().optional(),
 });
 
 const updateTitleSchema = z.object({
@@ -195,7 +200,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const sessions = database
       .listSessions(req.user!.id)
-      .map(toSessionResponse);
+      .map((session) => {
+        const settings = database.getSessionSettings(session.id);
+        return {
+          ...toSessionResponse(session),
+          gitBranch: settings?.gitBranch || null
+        };
+      });
     res.json({ sessions });
   })
 );
@@ -208,12 +219,39 @@ router.post(
 
     const session = database.createSession(title, req.user!.id);
 
+    // Prepare session settings
+    const gitRemoteUrl = body.gitRemoteUrl || body.githubRepo || null;
+    const gitBranch = body.gitBranch || null;
+
+    // If Git repo is provided, validate and create branch
+    let finalBranch = gitBranch;
+    if (gitRemoteUrl) {
+      const { ensureBranchForSession } = await import('../services/gitBranchManager');
+      const branchResult = await ensureBranchForSession(
+        session.id,
+        req.user!.id,
+        { gitRemoteUrl, gitBranch }
+      );
+
+      if (!branchResult.success) {
+        // Branch creation failed, delete the session and return error
+        database.deleteSession(session.id);
+        return res.status(400).json({
+          error: branchResult.error || "Failed to create branch for session"
+        });
+      }
+
+      finalBranch = branchResult.branchName;
+    }
+
     // Save session settings if provided
+    let shouldCreateContainer = false;
     if (
       body.githubRepo ||
       body.customEnvVars ||
       body.dockerfilePath ||
-      body.buildSettings
+      body.buildSettings ||
+      gitRemoteUrl
     ) {
       database.upsertSessionSettings({
         sessionId: session.id,
@@ -221,7 +259,54 @@ router.post(
         customEnvVars: body.customEnvVars || {},
         dockerfilePath: body.dockerfilePath || null,
         buildSettings: body.buildSettings || {},
+        gitRemoteUrl,
+        gitBranch: finalBranch,
       });
+
+      // Auto-create container if repo or dockerfile is provided
+      shouldCreateContainer = !!(gitRemoteUrl || body.dockerfilePath);
+    }
+
+    // Automatically create container if configured
+    if (shouldCreateContainer) {
+      try {
+        // Get global deploy config
+        const deployConfigRow = database.getDeployConfig();
+        if (deployConfigRow) {
+          const apiKey = deployConfigRow.config.apiKey
+            ? decryptSecret(
+                deployConfigRow.config.apiKey.cipher,
+                deployConfigRow.config.apiKey.iv,
+                deployConfigRow.config.apiKey.tag,
+              )
+            : null;
+
+          if (apiKey) {
+            // Get session settings
+            const settings = database.getSessionSettings(session.id);
+
+            if (settings) {
+              // Export auth files as env vars
+              const authEnvVars = exportAuthFilesAsEnvVars(req.user!.id);
+
+              // Create container asynchronously (don't wait for completion)
+              createContainer({
+                sessionId: session.id,
+                settings,
+                userId: req.user!.id,
+                globalConfig: deployConfigRow.config,
+                apiKey,
+                authEnvVars,
+              }).catch((error) => {
+                console.error(`Failed to auto-create container for session ${session.id}:`, error);
+              });
+            }
+          }
+        }
+      } catch (error) {
+        // Log error but don't fail session creation
+        console.error(`Error initiating container creation for session ${session.id}:`, error);
+      }
     }
 
     res.status(201).json({ session: toSessionResponse(session) });
@@ -237,6 +322,24 @@ router.get(
     }
 
     res.json({ session: toSessionResponse(session) });
+  })
+);
+
+router.get(
+  '/sessions/:id/settings',
+  asyncHandler(async (req, res) => {
+    const session = findSessionOr404(req.params.id, req, res);
+    if (!session) {
+      return;
+    }
+
+    const settings = database.getSessionSettings(session.id);
+    if (!settings) {
+      res.status(404).json({ error: 'Session settings not found' });
+      return;
+    }
+
+    res.json({ settings });
   })
 );
 
@@ -311,6 +414,14 @@ router.delete(
     const session = findSessionOr404(req.params.id, req, res);
     if (!session) {
       return;
+    }
+
+    // Delete branch if it's an auto-generated session branch
+    const settings = database.getSessionSettings(session.id);
+    if (settings?.gitBranch && settings.gitBranch.startsWith('session/')) {
+      const { deleteSessionBranch } = await import('../services/gitBranchManager');
+      await deleteSessionBranch(session.id, req.user!.id);
+      // Continue with deletion even if branch deletion fails
     }
 
     const deleted = database.deleteSession(session.id);

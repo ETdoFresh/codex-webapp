@@ -257,6 +257,24 @@ const migrations: string[] = [
   CREATE UNIQUE INDEX IF NOT EXISTS idx_session_settings_branch_unique
   ON session_settings(git_remote_url, git_branch)
   WHERE git_remote_url IS NOT NULL AND git_branch IS NOT NULL
+`,
+  // GitHub OAuth tokens for Git operations
+  `
+  CREATE TABLE IF NOT EXISTS github_oauth_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    token_type TEXT NOT NULL DEFAULT 'bearer',
+    scope TEXT,
+    expires_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  )
+`,
+  `
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_github_oauth_user ON github_oauth_tokens(user_id)
 `
 ];
 
@@ -1608,6 +1626,132 @@ class SQLiteDatabase implements IDatabase {
     );
   }
 
+  // GitHub OAuth Token Management
+  saveGitHubOAuthToken(input: {
+    userId: string;
+    accessToken: string;
+    refreshToken?: string | null;
+    tokenType?: string;
+    scope?: string | null;
+    expiresAt?: string | null;
+  }): void {
+    const now = new Date().toISOString();
+    const existing = this.db
+      .prepare(`SELECT id FROM github_oauth_tokens WHERE user_id = ?`)
+      .get(input.userId) as { id: string } | undefined;
+
+    const id = existing?.id ?? uuid();
+
+    // Encrypt the access token for security
+    const encrypted = encryptSecret(input.accessToken);
+    let tokenToStore: string;
+
+    if (encrypted) {
+      // Store as encrypted: ciphertext:iv:tag
+      tokenToStore = `${encrypted.cipherText}:${encrypted.iv}:${encrypted.tag}`;
+    } else {
+      // Store as plain text if encryption is not available
+      tokenToStore = input.accessToken;
+    }
+
+    this.db
+      .prepare(
+        `
+      INSERT INTO github_oauth_tokens (
+        id, user_id, access_token, refresh_token, token_type, scope, expires_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        access_token = excluded.access_token,
+        refresh_token = excluded.refresh_token,
+        token_type = excluded.token_type,
+        scope = excluded.scope,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at
+    `,
+      )
+      .run(
+        id,
+        input.userId,
+        tokenToStore, // Store encrypted or plain text token
+        input.refreshToken ?? null,
+        input.tokenType ?? "bearer",
+        input.scope ?? null,
+        input.expiresAt ?? null,
+        existing ? existing.id : now,
+        now,
+      );
+  }
+
+  getGitHubOAuthToken(userId: string): {
+    accessToken: string;
+    refreshToken: string | null;
+    expiresAt: string | null;
+  } | null {
+    const row = this.db
+      .prepare(
+        `
+      SELECT access_token, refresh_token, expires_at
+      FROM github_oauth_tokens
+      WHERE user_id = ?
+    `,
+      )
+      .get(userId) as
+      | {
+          access_token: string;
+          refresh_token: string | null;
+          expires_at: string | null;
+        }
+      | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    // Handle both encrypted (ciphertext:iv:tag) and unencrypted tokens
+    let accessToken: string;
+
+    if (row.access_token.includes(":")) {
+      // Encrypted token format: ciphertext:iv:tag
+      const parts = row.access_token.split(":");
+      if (parts.length === 3) {
+        const [ciphertext, iv, tag] = parts;
+        try {
+          // Check if the parts look valid (not "null" or empty)
+          if (!ciphertext || !iv || !tag || ciphertext === "null" || iv === "null" || tag === "null") {
+            // Invalid encrypted format, treat as plain text
+            accessToken = row.access_token;
+          } else {
+            const decrypted = decryptSecret(ciphertext, iv, tag);
+            accessToken = decrypted || row.access_token; // Fallback to stored value if decryption fails
+          }
+        } catch (error) {
+          // Decryption failed, treat as plain text
+          console.warn("Failed to decrypt GitHub token, using plain text:", error);
+          accessToken = row.access_token;
+        }
+      } else {
+        // Unexpected format, treat as plain text
+        accessToken = row.access_token;
+      }
+    } else {
+      // Unencrypted token (saved before CODEX_WEBAPP_SECRET was configured)
+      accessToken = row.access_token;
+    }
+
+    return {
+      accessToken,
+      refreshToken: row.refresh_token,
+      expiresAt: row.expires_at,
+    };
+  }
+
+  deleteGitHubOAuthToken(userId: string): boolean {
+    const result = this.db
+      .prepare(`DELETE FROM github_oauth_tokens WHERE user_id = ?`)
+      .run(userId);
+    return result.changes > 0;
+  }
+
   upsertSessionContainer(input: {
     sessionId: string;
     dokployAppId: string | null;
@@ -1822,9 +1966,26 @@ class SQLiteDatabase implements IDatabase {
     this.db.pragma("journal_mode = WAL");
   }
 
+  private columnExists(tableName: string, columnName: string): boolean {
+    const result = this.db
+      .prepare(`PRAGMA table_info(${tableName})`)
+      .all() as Array<{ name: string }>;
+    return result.some((col) => col.name === columnName);
+  }
+
   private runMigrations(): void {
     this.db.transaction(() => {
       for (const migration of migrations) {
+        // Skip ALTER TABLE ADD COLUMN if column already exists
+        const addColumnMatch = migration.match(/ALTER TABLE (\w+) ADD COLUMN (\w+)/i);
+        if (addColumnMatch) {
+          const [, tableName, columnName] = addColumnMatch;
+          if (this.columnExists(tableName, columnName)) {
+            console.log(`Column ${tableName}.${columnName} already exists, skipping migration`);
+            continue;
+          }
+        }
+
         this.db.prepare(migration).run();
       }
     })();

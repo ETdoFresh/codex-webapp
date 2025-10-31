@@ -29,6 +29,7 @@ import {
   type AutoTitleMessagePayload,
   getSessionContainerStatus,
   createSessionContainer,
+  getSessionSettings,
 } from "./api/client";
 import type {
   AppMeta,
@@ -46,6 +47,7 @@ import { useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import AdminPanel from "./components/AdminPanel";
 import DokployPanel from "./components/DokployPanel";
+import GitHubConnectionPanel from "./components/GitHubConnectionPanel";
 import SessionSettingsModal, {
   type SessionSettings,
 } from "./components/SessionSettingsModal";
@@ -314,7 +316,7 @@ function AuthenticatedApp() {
     filename: string;
   } | null>(null);
   const [chatViewMode, setChatViewMode] = useState<
-    "formatted" | "detailed" | "raw" | "editor" | "deploy" | "admin" | "container" | "dokploy"
+    "formatted" | "detailed" | "raw" | "editor" | "deploy" | "admin" | "container" | "dokploy" | "github"
   >("formatted");
   const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(
     new Set(),
@@ -331,6 +333,10 @@ function AuthenticatedApp() {
   const [containerStatuses, setContainerStatuses] = useState<
     Record<string, { status: string; url?: string; error?: string }>
   >({});
+  const [sessionSettings, setSessionSettings] = useState<{
+    gitRemoteUrl: string | null;
+    gitBranch: string | null;
+  } | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -346,6 +352,7 @@ function AuthenticatedApp() {
   const isContainerView = chatViewMode === "container";
   const isAdminView = chatViewMode === "admin";
   const isDokployView = chatViewMode === "dokploy";
+  const isGitHubView = chatViewMode === "github";
 
   const persistMetaPreferences = useCallback((nextMeta: AppMeta) => {
     safeSetLocalStorageItem(LAST_PROVIDER_STORAGE_KEY, nextMeta.provider);
@@ -383,7 +390,7 @@ function AuthenticatedApp() {
 
   const updateMessages = useCallback(
     (action: SetStateAction<Message[]>) => {
-      if (!isRawView && !isDeployView && !isAdminView && !isDokployView) {
+      if (!isRawView && !isDeployView && !isAdminView && !isDokployView && !isGitHubView) {
         const container = messageListRef.current;
         if (container) {
           const atBottom =
@@ -399,11 +406,11 @@ function AuthenticatedApp() {
       }
       setMessages(action);
     },
-    [isRawView, isDeployView, isAdminView, isDokployView, setMessages],
+    [isRawView, isDeployView, isAdminView, isDokployView, isGitHubView, setMessages],
   );
 
   const handleMessageListScroll = useCallback(() => {
-    if (isRawView || isDeployView || isAdminView || isDokployView) {
+    if (isRawView || isDeployView || isAdminView || isDokployView || isGitHubView) {
       return;
     }
 
@@ -416,10 +423,10 @@ function AuthenticatedApp() {
     if (shouldAutoScrollRef.current) {
       pendingScrollToBottomRef.current = true;
     }
-  }, [isRawView, isDeployView, isAdminView, isDokployView]);
+  }, [isRawView, isDeployView, isAdminView, isDokployView, isGitHubView]);
 
   useEffect(() => {
-    if (!supportsIntersectionObserver || isRawView || isDeployView || isAdminView || isDokployView) {
+    if (!supportsIntersectionObserver || isRawView || isDeployView || isAdminView || isDokployView || isGitHubView) {
       return;
     }
 
@@ -451,7 +458,7 @@ function AuthenticatedApp() {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [isRawView, isDeployView, isAdminView, isDokployView, supportsIntersectionObserver, messages.length]);
+  }, [isRawView, isDeployView, isAdminView, isDokployView, isGitHubView, supportsIntersectionObserver, messages.length]);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -625,6 +632,46 @@ function AuthenticatedApp() {
       canceled = true;
     };
   }, [activeSessionId, updateMessages]);
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      setSessionSettings(null);
+      return;
+    }
+
+    let canceled = false;
+    const loadSettings = async () => {
+      try {
+        const settings = await getSessionSettings(activeSessionId);
+        if (canceled) {
+          return;
+        }
+        setSessionSettings({
+          gitRemoteUrl: settings.gitRemoteUrl,
+          gitBranch: settings.gitBranch,
+        });
+      } catch (error) {
+        if (!canceled) {
+          console.error("Failed to load session settings", error);
+          setSessionSettings(null);
+        }
+      }
+    };
+
+    void loadSettings();
+
+    return () => {
+      canceled = true;
+    };
+  }, [activeSessionId]);
+
+  // Auto-switch to GitHub view when returning from OAuth
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("github_connected") === "true") {
+      setChatViewMode("github");
+    }
+  }, []);
 
   useEffect(() => {
     if (!isRawView && !isDeployView) {
@@ -1934,13 +1981,8 @@ function AuthenticatedApp() {
       pendingScrollToBottomRef.current = true;
       setSessionSettingsModalOpen(false);
 
-      // Create container for this session
-      try {
-        await createSessionContainer(session.id);
-      } catch (error) {
-        console.error("Failed to create container", error);
-        // Don't fail the whole operation if container creation fails
-      }
+      // Note: Container is automatically created by the backend if repo/dockerfile is configured.
+      // The container status polling (useEffect below) will show the container creation progress.
     } catch (error) {
       console.error("Failed to create session", error);
       setErrorNotice("Unable to create a new session. Please try again.");
@@ -2334,6 +2376,14 @@ function AuthenticatedApp() {
             ) : null}
             <button
               type="button"
+              className={`ghost-button github-toggle-button${isGitHubView ? " active" : ""}`}
+              onClick={() => setChatViewMode(isGitHubView ? "formatted" : "github")}
+              aria-pressed={isGitHubView}
+            >
+              GitHub
+            </button>
+            <button
+              type="button"
               className="ghost-button logout-button"
               onClick={() => void handleLogout()}
             >
@@ -2398,6 +2448,11 @@ function AuthenticatedApp() {
                             new Date(session.updatedAt),
                           )}
                         </span>
+                        {session.gitBranch && (
+                          <code className="session-branch-badge" style={{ fontSize: "0.75em", opacity: 0.7 }}>
+                            {session.gitBranch}
+                          </code>
+                        )}
                         <code className="session-id-badge">{shortId}</code>
                       </div>
                     </button>
@@ -2424,6 +2479,10 @@ function AuthenticatedApp() {
           ) : isDokployView ? (
             <div className="message-panel message-panel-dokploy">
               <DokployPanel />
+            </div>
+          ) : isGitHubView ? (
+            <div className="message-panel message-panel-github">
+              <GitHubConnectionPanel />
             </div>
           ) : activeSession ? (
             <>
@@ -2517,6 +2576,14 @@ function AuthenticatedApp() {
                       new Date(activeSession.updatedAt),
                     )}
                   </p>
+                  {sessionSettings?.gitBranch && (
+                    <p className="muted" style={{ marginTop: "0.5em" }}>
+                      Branch:{" "}
+                      <code style={{ fontSize: "0.9em" }}>
+                        {sessionSettings.gitBranch}
+                      </code>
+                    </p>
+                  )}
                 </div>
                 <div className="chat-header-tools">
                   <div className="workspace-controls">

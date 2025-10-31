@@ -9,6 +9,7 @@ export type SessionResponse = {
   updatedAt: string;
   workspacePath: string;
   titleLocked: boolean;
+  gitBranch?: string | null;
 };
 
 export type AttachmentResponse = {

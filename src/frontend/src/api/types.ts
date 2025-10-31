@@ -12,6 +12,7 @@ export type Session = {
   updatedAt: string;
   workspacePath: string;
   titleLocked: boolean;
+  gitBranch?: string | null;
 };
 
 export type AuthUser = {

@@ -3,6 +3,7 @@ import { FormEvent, useState } from "react";
 export type SessionSettings = {
   title: string;
   githubRepo: string;
+  gitBranch?: string;
   customEnvVars: Record<string, string>;
   dockerfilePath: string;
   buildSettings: Record<string, unknown>;
@@ -17,6 +18,7 @@ type Props = {
 const SessionSettingsModal = ({ open, onClose, onSubmit }: Props) => {
   const [title, setTitle] = useState("");
   const [githubRepo, setGithubRepo] = useState("");
+  const [gitBranch, setGitBranch] = useState("");
   const [dockerfilePath, setDockerfilePath] = useState("");
   const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>([
     { key: "", value: "" },
@@ -56,6 +58,7 @@ const SessionSettingsModal = ({ open, onClose, onSubmit }: Props) => {
       await onSubmit({
         title: title.trim() || "New Session",
         githubRepo: githubRepo.trim(),
+        gitBranch: gitBranch.trim() || undefined,
         customEnvVars,
         dockerfilePath: dockerfilePath.trim(),
         buildSettings: {},
@@ -64,6 +67,7 @@ const SessionSettingsModal = ({ open, onClose, onSubmit }: Props) => {
       // Reset form
       setTitle("");
       setGithubRepo("");
+      setGitBranch("");
       setDockerfilePath("");
       setEnvVars([{ key: "", value: "" }]);
     } finally {
@@ -137,6 +141,25 @@ const SessionSettingsModal = ({ open, onClose, onSubmit }: Props) => {
             />
             <small className="muted">
               Clone this repository into the container workspace
+            </small>
+          </label>
+
+          <label style={{ display: "block", marginBottom: "1em" }}>
+            <span style={{ display: "block", marginBottom: "0.5em" }}>
+              Git Branch (optional)
+            </span>
+            <input
+              type="text"
+              value={gitBranch}
+              onChange={(e) => setGitBranch(e.target.value)}
+              placeholder="Leave empty to auto-generate session/[id]"
+              disabled={submitting}
+              style={{ width: "100%" }}
+            />
+            <small className="muted">
+              {gitBranch.trim()
+                ? `Use existing branch "${gitBranch}"`
+                : "Auto-generate unique branch for this session"}
             </small>
           </label>
 

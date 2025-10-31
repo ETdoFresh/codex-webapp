@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';

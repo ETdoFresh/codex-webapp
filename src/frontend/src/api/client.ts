@@ -424,6 +424,7 @@ export async function updateMeta(payload: {
 export async function createSession(params?: {
   title?: string;
   githubRepo?: string;
+  gitBranch?: string;
   customEnvVars?: Record<string, string>;
   dockerfilePath?: string;
   buildSettings?: Record<string, unknown>;
@@ -434,6 +435,29 @@ export async function createSession(params?: {
   });
 
   return data.session;
+}
+
+export async function getSessionSettings(sessionId: string): Promise<{
+  id: string;
+  sessionId: string;
+  githubRepo: string | null;
+  customEnvVars: Record<string, string>;
+  dockerfilePath: string | null;
+  buildSettings: Record<string, unknown>;
+  gitRemoteUrl: string | null;
+  gitBranch: string | null;
+}> {
+  const data = await request<{ settings: {
+    id: string;
+    sessionId: string;
+    githubRepo: string | null;
+    customEnvVars: Record<string, string>;
+    dockerfilePath: string | null;
+    buildSettings: Record<string, unknown>;
+    gitRemoteUrl: string | null;
+    gitBranch: string | null;
+  } }>(`/api/sessions/${sessionId}/settings`);
+  return data.settings;
 }
 
 export async function deleteSession(id: string): Promise<void> {
@@ -782,4 +806,24 @@ export async function saveWorkspaceFile(
 
   return data.file;
 }
-  
+
+// GitHub OAuth
+export async function initiateGitHubAuth(): Promise<{ url: string }> {
+  return await request<{ url: string }>("/api/auth/github/authorize");
+}
+
+export async function getGitHubConnectionStatus(): Promise<{
+  connected: boolean;
+  hasToken: boolean;
+}> {
+  return await request<{ connected: boolean; hasToken: boolean }>(
+    "/api/auth/github/status",
+  );
+}
+
+export async function disconnectGitHub(): Promise<{ success: boolean }> {
+  return await request<{ success: boolean }>("/api/auth/github", {
+    method: "DELETE",
+  });
+}
+
