@@ -242,6 +242,21 @@ const migrations: string[] = [
 `,
   `
   CREATE INDEX IF NOT EXISTS idx_session_settings_session ON session_settings(session_id)
+`,
+  // Add git_remote_url column for explicit Git repository tracking
+  `
+  ALTER TABLE session_settings ADD COLUMN git_remote_url TEXT
+`,
+  // Add git_branch column for 1:1 branch:session mapping
+  `
+  ALTER TABLE session_settings ADD COLUMN git_branch TEXT
+`,
+  // Enforce unique constraint on (git_remote_url, git_branch) to prevent duplicate sessions on same branch
+  // Only applies when both columns are not null
+  `
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_session_settings_branch_unique
+  ON session_settings(git_remote_url, git_branch)
+  WHERE git_remote_url IS NOT NULL AND git_branch IS NOT NULL
 `
 ];
 
@@ -434,6 +449,8 @@ class SQLiteDatabase implements IDatabase {
     customEnvVars: string;
     dockerfilePath: string | null;
     buildSettings: string;
+    gitRemoteUrl: string | null;
+    gitBranch: string | null;
     createdAt: string;
     updatedAt: string;
   }>;
@@ -446,6 +463,8 @@ class SQLiteDatabase implements IDatabase {
       custom_env_vars: string;
       dockerfile_path: string | null;
       build_settings: string;
+      git_remote_url: string | null;
+      git_branch: string | null;
       created_at: string;
       updated_at: string;
     }
@@ -457,6 +476,7 @@ class SQLiteDatabase implements IDatabase {
     this.runMigrations();
     this.ensureSessionColumns();
     this.ensureDeployConfigColumns();
+    this.migrateSessionSettingsBranchData();
     this.upsertSessionWorkspaceStmt = this.db.prepare(`
       INSERT OR REPLACE INTO session_workspaces (session_id, workspace_path)
       VALUES (@sessionId, @workspacePath)
@@ -868,6 +888,8 @@ class SQLiteDatabase implements IDatabase {
         custom_env_vars,
         dockerfile_path,
         build_settings,
+        git_remote_url,
+        git_branch,
         created_at,
         updated_at
       ) VALUES (
@@ -877,6 +899,8 @@ class SQLiteDatabase implements IDatabase {
         @customEnvVars,
         @dockerfilePath,
         @buildSettings,
+        @gitRemoteUrl,
+        @gitBranch,
         @createdAt,
         @updatedAt
       )
@@ -885,6 +909,8 @@ class SQLiteDatabase implements IDatabase {
         custom_env_vars = @customEnvVars,
         dockerfile_path = @dockerfilePath,
         build_settings = @buildSettings,
+        git_remote_url = @gitRemoteUrl,
+        git_branch = @gitBranch,
         updated_at = @updatedAt
     `);
     this.getSessionSettingsStmt = this.db.prepare(`
@@ -895,6 +921,8 @@ class SQLiteDatabase implements IDatabase {
         custom_env_vars,
         dockerfile_path,
         build_settings,
+        git_remote_url,
+        git_branch,
         created_at,
         updated_at
       FROM session_settings
@@ -939,6 +967,56 @@ class SQLiteDatabase implements IDatabase {
     this.db.exec(
       `CREATE INDEX IF NOT EXISTS idx_deploy_configs_session ON deploy_configs(session_id)`,
     );
+  }
+
+  /**
+   * Migrates existing session_settings data to extract branch and remote URL from build_settings JSON.
+   * This runs once to populate the new git_branch and git_remote_url columns from legacy data.
+   */
+  private migrateSessionSettingsBranchData(): void {
+    // Get all session_settings that need migration
+    const settings = this.db
+      .prepare(`
+        SELECT id, session_id, github_repo, build_settings, git_branch, git_remote_url
+        FROM session_settings
+        WHERE git_branch IS NULL OR git_remote_url IS NULL
+      `)
+      .all() as Array<{
+        id: string;
+        session_id: string;
+        github_repo: string | null;
+        build_settings: string;
+        git_branch: string | null;
+        git_remote_url: string | null;
+      }>;
+
+    const updateStmt = this.db.prepare(`
+      UPDATE session_settings
+      SET git_branch = @gitBranch, git_remote_url = @gitRemoteUrl
+      WHERE id = @id
+    `);
+
+    this.db.transaction(() => {
+      for (const setting of settings) {
+        try {
+          const buildSettings = JSON.parse(setting.build_settings || "{}");
+          const gitBranch = setting.git_branch || buildSettings.branch || null;
+          const gitRemoteUrl = setting.git_remote_url || setting.github_repo || null;
+
+          // Only update if we found new data
+          if (gitBranch !== setting.git_branch || gitRemoteUrl !== setting.git_remote_url) {
+            updateStmt.run({
+              id: setting.id,
+              gitBranch,
+              gitRemoteUrl,
+            });
+          }
+        } catch (error) {
+          // If JSON parsing fails, skip this record
+          console.warn(`Failed to migrate session_settings for id ${setting.id}:`, error);
+        }
+      }
+    })();
   }
 
   private initializeDeployConfig(): void {
@@ -1588,6 +1666,8 @@ class SQLiteDatabase implements IDatabase {
     customEnvVars?: Record<string, string>;
     dockerfilePath?: string | null;
     buildSettings?: Record<string, unknown>;
+    gitRemoteUrl?: string | null;
+    gitBranch?: string | null;
   }): SessionSettingsRecord {
     const existing = this.getSessionSettings(input.sessionId);
     const now = new Date().toISOString();
@@ -1601,6 +1681,8 @@ class SQLiteDatabase implements IDatabase {
       customEnvVars: JSON.stringify(input.customEnvVars ?? {}),
       dockerfilePath: input.dockerfilePath ?? null,
       buildSettings: JSON.stringify(input.buildSettings ?? {}),
+      gitRemoteUrl: input.gitRemoteUrl ?? existing?.gitRemoteUrl ?? null,
+      gitBranch: input.gitBranch ?? existing?.gitBranch ?? null,
       createdAt,
       updatedAt: now,
     });
@@ -1624,6 +1706,8 @@ class SQLiteDatabase implements IDatabase {
       customEnvVars: row.custom_env_vars,
       dockerfilePath: row.dockerfile_path,
       buildSettings: row.build_settings,
+      gitRemoteUrl: row.git_remote_url,
+      gitBranch: row.git_branch,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
