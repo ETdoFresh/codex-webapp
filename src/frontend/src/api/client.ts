@@ -147,7 +147,16 @@ export async function createSessionContainer(sessionId: string): Promise<void> {
 export async function getSessionContainerStatus(
   sessionId: string,
 ): Promise<{ status: string; url?: string; error?: string }> {
-  return await request(`/api/sessions/${sessionId}/container/status`);
+  try {
+    return await request(`/api/sessions/${sessionId}/container/status`);
+  } catch (error) {
+    // If container doesn't exist (404), return a "not found" status instead of throwing
+    if (error instanceof ApiError && error.status === 404) {
+      return { status: "not_found" };
+    }
+    // For other errors, re-throw
+    throw error;
+  }
 }
 
 export async function getSessionContainerLogs(sessionId: string): Promise<{ logs: string }> {

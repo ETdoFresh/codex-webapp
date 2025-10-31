@@ -582,11 +582,19 @@ function AuthenticatedApp() {
       const statuses: Record<string, { status: string; url?: string; error?: string }> = {};
 
       for (const session of sessions) {
+        // Only poll sessions that might have containers (check if gitBranch exists, which indicates a container was configured)
+        if (!session.gitBranch) {
+          continue;
+        }
+
         try {
           const status = await getSessionContainerStatus(session.id);
-          statuses[session.id] = status;
+          // Only store status if container exists (not "not_found")
+          if (status.status !== "not_found") {
+            statuses[session.id] = status;
+          }
         } catch (error) {
-          // Container doesn't exist yet, that's okay
+          // Ignore errors for sessions without containers
           console.debug(`No container for session ${session.id}`);
         }
       }
