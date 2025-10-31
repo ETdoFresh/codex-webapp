@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Read(//tmp/Ditto/DragFiles/**)",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__fill_form",
+      "mcp__chrome-devtools__fill",
+      "mcp__chrome-devtools__evaluate_script",
+      "mcp__chrome-devtools__click",
+      "mcp__chrome-devtools__wait_for",
+      "mcp__chrome-devtools__list_pages",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__list_console_messages",
+      "Bash(where:*)",
+      "Bash(test -f \"C:\\nvm4w\\nodejs\\claude\")",
+      "Bash(cat:*)",
+      "Bash(npm run dev:*)",
+      "mcp__chrome-devtools__handle_dialog",
+      "Read(//c/nvm4w/nodejs/**)",
+      "Bash(droid auth status:*)",
+      "Read(//c/Users/etgarcia/.factory/**)",
+      "Read(//c/tmp/**)",
+      "Bash(droid chat:*)",
+      "Bash(droid exec:*)",
+      "WebSearch",
+      "Bash(taskkill:*)",
+      "Bash(test:*)",
+      "mcp__chrome-devtools__list_network_requests",
+      "Bash(sqlite3:*)",
+      "Read(//c/Users/etgarcia/OneDrive/Documents/ShareX/Screenshots/2025-10/**)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(node -e:*)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "enableAllProjectMcpServers": true
+}

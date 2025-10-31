@@ -27,8 +27,6 @@ import {
   setSessionTitleLock,
   autoUpdateSessionTitle,
   type AutoTitleMessagePayload,
-  getSessionContainerStatus,
-  createSessionContainer,
   getSessionSettings,
 } from "./api/client";
 import type {
@@ -42,7 +40,6 @@ import type {
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import WorkspaceRootModal from "./components/WorkspaceRootModal";
-import DeployPanel from "./components/DeployPanel";
 import { useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import AdminPanel from "./components/AdminPanel";
@@ -316,7 +313,7 @@ function AuthenticatedApp() {
     filename: string;
   } | null>(null);
   const [chatViewMode, setChatViewMode] = useState<
-    "formatted" | "detailed" | "raw" | "editor" | "deploy" | "admin" | "container" | "dokploy" | "github" | "session"
+    "formatted" | "detailed" | "raw" | "editor" | "admin" | "dokploy" | "github" | "session"
   >("formatted");
   const [expandedItemKeys, setExpandedItemKeys] = useState<Set<string>>(
     new Set(),
@@ -329,9 +326,6 @@ function AuthenticatedApp() {
   const [titleSaving, setTitleSaving] = useState(false);
   const [titleLocking, setTitleLocking] = useState(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
-  const [containerStatuses, setContainerStatuses] = useState<
-    Record<string, { status: string; url?: string; error?: string }>
-  >({});
   const [sessionSettings, setSessionSettings] = useState<{
     gitRemoteUrl: string | null;
     gitBranch: string | null;
@@ -347,8 +341,6 @@ function AuthenticatedApp() {
   const isRawView = chatViewMode === "raw";
   const isDetailedView = chatViewMode === "detailed";
   const isFileEditorView = chatViewMode === "editor";
-  const isDeployView = chatViewMode === "deploy";
-  const isContainerView = chatViewMode === "container";
   const isAdminView = chatViewMode === "admin";
   const isDokployView = chatViewMode === "dokploy";
   const isGitHubView = chatViewMode === "github";
@@ -390,7 +382,7 @@ function AuthenticatedApp() {
 
   const updateMessages = useCallback(
     (action: SetStateAction<Message[]>) => {
-      if (!isRawView && !isDeployView && !isAdminView && !isDokployView && !isGitHubView && !isSessionView) {
+      if (!isRawView && !isAdminView && !isDokployView && !isGitHubView && !isSessionView) {
         const container = messageListRef.current;
         if (container) {
           const atBottom =
@@ -406,11 +398,11 @@ function AuthenticatedApp() {
       }
       setMessages(action);
     },
-    [isRawView, isDeployView, isAdminView, isDokployView, isGitHubView, isSessionView, setMessages],
+    [isRawView, isAdminView, isDokployView, isGitHubView, isSessionView, setMessages],
   );
 
   const handleMessageListScroll = useCallback(() => {
-    if (isRawView || isDeployView || isAdminView || isDokployView || isGitHubView || isSessionView) {
+    if (isRawView || isAdminView || isDokployView || isGitHubView || isSessionView) {
       return;
     }
 
@@ -423,10 +415,10 @@ function AuthenticatedApp() {
     if (shouldAutoScrollRef.current) {
       pendingScrollToBottomRef.current = true;
     }
-  }, [isRawView, isDeployView, isAdminView, isDokployView, isGitHubView, isSessionView]);
+  }, [isRawView, isAdminView, isDokployView, isGitHubView, isSessionView]);
 
   useEffect(() => {
-    if (!supportsIntersectionObserver || isRawView || isDeployView || isAdminView || isDokployView || isGitHubView || isSessionView) {
+    if (!supportsIntersectionObserver || isRawView || isAdminView || isDokployView || isGitHubView || isSessionView) {
       return;
     }
 
@@ -458,7 +450,7 @@ function AuthenticatedApp() {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [isRawView, isDeployView, isAdminView, isDokployView, isGitHubView, isSessionView, supportsIntersectionObserver, messages.length]);
+  }, [isRawView, isAdminView, isDokployView, isGitHubView, isSessionView, supportsIntersectionObserver, messages.length]);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
@@ -572,44 +564,6 @@ function AuthenticatedApp() {
     };
   }, []);
 
-  // Poll container statuses
-  useEffect(() => {
-    if (sessions.length === 0) {
-      return;
-    }
-
-    const pollStatuses = async () => {
-      const statuses: Record<string, { status: string; url?: string; error?: string }> = {};
-
-      for (const session of sessions) {
-        // Only poll sessions that might have containers (check if gitBranch exists, which indicates a container was configured)
-        if (!session.gitBranch) {
-          continue;
-        }
-
-        try {
-          const status = await getSessionContainerStatus(session.id);
-          // Only store status if container exists (not "not_found")
-          if (status.status !== "not_found") {
-            statuses[session.id] = status;
-          }
-        } catch (error) {
-          // Ignore errors for sessions without containers
-          console.debug(`No container for session ${session.id}`);
-        }
-      }
-
-      setContainerStatuses(statuses);
-    };
-
-    void pollStatuses();
-    const interval = setInterval(pollStatuses, 5000); // Poll every 5 seconds
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [sessions]);
-
   useEffect(() => {
     if (!activeSessionId) {
       updateMessages([]);
@@ -682,14 +636,14 @@ function AuthenticatedApp() {
   }, []);
 
   useEffect(() => {
-    if (!isRawView && !isDeployView) {
+    if (!isRawView) {
       shouldAutoScrollRef.current = true;
       pendingScrollToBottomRef.current = true;
     }
-  }, [isRawView, isDeployView, activeSessionId]);
+  }, [isRawView, activeSessionId]);
 
   useEffect(() => {
-    if (isRawView || isDeployView) {
+    if (isRawView) {
       return;
     }
 
@@ -2437,16 +2391,6 @@ function AuthenticatedApp() {
               {sessions.map((session) => {
                 const isActive = session.id === activeSessionId;
                 const shortId = session.id.slice(0, 8);
-                const containerStatus = containerStatuses[session.id];
-                const statusIndicator = containerStatus
-                  ? containerStatus.status === "running"
-                    ? "🟢"
-                    : containerStatus.status === "creating"
-                      ? "🟡"
-                      : containerStatus.status === "stopped"
-                        ? "⚪"
-                        : "🔴"
-                  : "";
                 return (
                   <li key={session.id}>
                     <button
@@ -2455,7 +2399,6 @@ function AuthenticatedApp() {
                       onClick={() => handleSelectSession(session.id)}
                     >
                       <span className="session-title">
-                        {statusIndicator && <span style={{ marginRight: "0.5em" }}>{statusIndicator}</span>}
                         {session.title}
                       </span>
                       <div className="session-meta">
@@ -2674,27 +2617,6 @@ function AuthenticatedApp() {
                     >
                       File Editor
                     </button>
-                    <button
-                      type="button"
-                      className={`chat-view-toggle-button${
-                        isDeployView ? " active" : ""
-                      }`}
-                      onClick={() => setChatViewMode("deploy")}
-                      aria-pressed={isDeployView}
-                    >
-                      Deploy
-                    </button>
-                    <button
-                      type="button"
-                      className={`chat-view-toggle-button${
-                        isContainerView ? " active" : ""
-                      }`}
-                      onClick={() => setChatViewMode("container")}
-                      aria-pressed={isContainerView}
-                      disabled={!containerStatuses[activeSessionId || ""]?.url}
-                    >
-                      Container
-                    </button>
                   </div>
                 </div>
               </header>
@@ -2702,41 +2624,14 @@ function AuthenticatedApp() {
               <div
                 className={`message-panel${isRawView ? " message-panel-raw" : ""}${
                   isDetailedView ? " message-panel-detailed" : ""
-                }${isFileEditorView ? " message-panel-editor" : ""}${
-                  isDeployView ? " message-panel-deploy" : ""
-                }`}
+                }${isFileEditorView ? " message-panel-editor" : ""}
+              `}
               >
                 {isFileEditorView ? (
                   <FileEditorPanel
                     key={activeSession.id}
                     sessionId={activeSession.id}
                   />
-                ) : isDeployView ? (
-                  <DeployPanel />
-                ) : isContainerView ? (
-                  containerStatuses[activeSessionId || ""]?.url ? (
-                    <iframe
-                      src={containerStatuses[activeSessionId || ""].url}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        border: "none",
-                      }}
-                      title="Container View"
-                    />
-                  ) : (
-                    <div className="message-placeholder">
-                      <p>Container is not ready yet.</p>
-                      <p className="muted">
-                        Status: {containerStatuses[activeSessionId || ""]?.status || "unknown"}
-                      </p>
-                      {containerStatuses[activeSessionId || ""]?.error && (
-                        <p style={{ color: "red" }}>
-                          Error: {containerStatuses[activeSessionId || ""].error}
-                        </p>
-                      )}
-                    </div>
-                  )
                 ) : isRawView ? (
                   loadingMessages ? (
                     <div className="message-placeholder">
@@ -2799,7 +2694,7 @@ function AuthenticatedApp() {
                 )}
               </div>
 
-              {!(isDeployView || isAdminView || isSessionView) ? (
+              {!(isAdminView || isSessionView) ? (
                 <form className="composer" onSubmit={handleSendMessage}>
                 {composerAttachments.length > 0 ? (
                   <div className="composer-attachments">
