@@ -177,6 +177,75 @@ export async function ensureBranchForSession(
 }
 
 /**
+ * Formats a repository name into a human-readable title.
+ * Converts kebab-case, snake_case, or camelCase to Title Case.
+ * Examples:
+ * - "hello-world-typescript" -> "Hello World Typescript"
+ * - "my_awesome_project" -> "My Awesome Project"
+ * - "myProject" -> "My Project"
+ */
+function formatRepoTitle(repoName: string): string {
+  return repoName
+    // Replace hyphens and underscores with spaces
+    .replace(/[-_]/g, " ")
+    // Add space before capital letters (for camelCase)
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    // Capitalize first letter of each word
+    .split(" ")
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/**
+ * Creates an initial commit on an empty repository.
+ * Creates a README.md with the repository title.
+ */
+async function createInitialCommit(
+  accessToken: string,
+  owner: string,
+  repo: string,
+  defaultBranch: string,
+): Promise<string> {
+  // Format the repo name into a nice title
+  const title = formatRepoTitle(repo);
+
+  // Use the Contents API to create a README.md file
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/contents/README.md`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github.v3+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: "Initial commit",
+        content: Buffer.from(`# ${title}\n`).toString("base64"),
+        branch: defaultBranch,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Failed to create initial commit:`, {
+      status: response.status,
+      statusText: response.statusText,
+      body: errorText,
+    });
+    throw new Error(`Failed to create initial commit: ${response.status} ${errorText}`);
+  }
+
+  const data = (await response.json()) as {
+    commit: { sha: string };
+  };
+
+  console.log(`Created initial commit on ${owner}/${repo} (${defaultBranch}): ${data.commit.sha}`);
+  return data.commit.sha;
+}
+
+/**
  * Creates a new branch on GitHub from the default branch.
  */
 async function createGitHubBranch(
@@ -197,7 +266,18 @@ async function createGitHubBranch(
   );
 
   if (!repoResponse.ok) {
-    throw new Error(`Failed to fetch repository: ${repoResponse.statusText}`);
+    const errorBody = await repoResponse.text();
+    console.error(`GitHub API error fetching repository ${owner}/${repo}:`, {
+      status: repoResponse.status,
+      statusText: repoResponse.statusText,
+      body: errorBody,
+    });
+
+    if (repoResponse.status === 404) {
+      throw new Error(`Repository not found: ${owner}/${repo}. Please verify the repository exists and you have access.`);
+    }
+
+    throw new Error(`Failed to fetch repository: ${repoResponse.status} ${repoResponse.statusText}`);
   }
 
   const repoData = (await repoResponse.json()) as {
@@ -215,13 +295,41 @@ async function createGitHubBranch(
     },
   );
 
-  if (!refResponse.ok) {
-    throw new Error(`Failed to fetch default branch: ${refResponse.statusText}`);
-  }
+  let defaultBranchSha: string;
 
-  const refData = (await refResponse.json()) as {
-    object: { sha: string };
-  };
+  if (!refResponse.ok) {
+    const errorBody = await refResponse.text();
+    console.error(`GitHub API error fetching ref for ${owner}/${repo}:`, {
+      status: refResponse.status,
+      statusText: refResponse.statusText,
+      body: errorBody,
+      defaultBranch: repoData.default_branch,
+    });
+
+    // Handle empty repository case - create initial commit
+    if (refResponse.status === 409 || refResponse.status === 404) {
+      console.log(`Repository ${owner}/${repo} appears empty, creating initial commit...`);
+      try {
+        defaultBranchSha = await createInitialCommit(
+          accessToken,
+          owner,
+          repo,
+          repoData.default_branch,
+        );
+      } catch (initError) {
+        throw new Error(
+          `Repository is empty and failed to create initial commit: ${initError instanceof Error ? initError.message : String(initError)}`
+        );
+      }
+    } else {
+      throw new Error(`Failed to fetch default branch: ${refResponse.status} ${refResponse.statusText}`);
+    }
+  } else {
+    const refData = (await refResponse.json()) as {
+      object: { sha: string };
+    };
+    defaultBranchSha = refData.object.sha;
+  }
 
   // Create the new branch
   const createResponse = await fetch(
@@ -235,16 +343,37 @@ async function createGitHubBranch(
       },
       body: JSON.stringify({
         ref: `refs/heads/${branchName}`,
-        sha: refData.object.sha,
+        sha: defaultBranchSha,
       }),
     },
   );
 
   if (!createResponse.ok) {
-    const errorData = await createResponse.json();
-    throw new Error(
-      `Failed to create branch: ${errorData.message || createResponse.statusText}`,
-    );
+    let errorMessage = createResponse.statusText;
+    try {
+      const errorData = await createResponse.json();
+      errorMessage = errorData.message || errorMessage;
+      console.error(`GitHub API error creating branch ${branchName}:`, {
+        status: createResponse.status,
+        statusText: createResponse.statusText,
+        error: errorData,
+      });
+    } catch {
+      // Response might not be JSON
+      const errorText = await createResponse.text();
+      console.error(`GitHub API error creating branch ${branchName}:`, {
+        status: createResponse.status,
+        statusText: createResponse.statusText,
+        body: errorText,
+      });
+    }
+
+    // Handle branch already exists case
+    if (createResponse.status === 422) {
+      throw new Error(`Branch '${branchName}' already exists on GitHub. ${errorMessage}`);
+    }
+
+    throw new Error(`Failed to create branch: ${errorMessage}`);
   }
 }
 
