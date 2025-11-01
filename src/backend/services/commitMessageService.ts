@@ -112,16 +112,27 @@ export async function generateCommitMessage(
 ${workspaceContext}
 
 Generate a commit message following these rules:
+
 1. Start the subject with one of: Add, Allow, Enhance, Fix, Improve, Refactor, Remove, or Update
 2. Use imperative mood in Title Case
 3. Keep subject at or below 72 characters
 4. Avoid unnecessary trailing punctuation
-5. When the diff warrants extra context, add a blank line after the subject, then 2-5 bullet points
-6. Each bullet should start with an imperative verb (e.g., "- Introduce...", "- Update...")
+5. For substantial commits with multiple changes or complex features, add a blank line after the subject, then include 2-5 bullet points describing the key changes
+6. Each bullet should start with "- " followed by an imperative verb (e.g., "- Introduce...", "- Update...", "- Add...")
 7. Keep bullets contiguous (no blank lines between them)
-8. For tiny, self-explanatory commits, omit the bullet section
+8. For simple, single-purpose commits (like adding one file or making a small fix), the subject line alone is sufficient
 
-IMPORTANT: Return ONLY the commit message text, nothing else. Do not include explanations or markdown formatting around it.`;
+Format for substantial commits:
+Subject Line Here
+
+- First bullet point describing a change
+- Second bullet point describing another aspect
+- Third bullet point if applicable
+
+Format for simple commits:
+Subject Line Here
+
+IMPORTANT: Return ONLY the commit message text. Do not include explanations, markdown code fences, or other formatting around it.`;
 
     const meta = getCodexMeta();
     const manager = (() => {
