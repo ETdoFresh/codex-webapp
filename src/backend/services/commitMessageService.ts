@@ -1,4 +1,5 @@
-import { execSync } from "child_process";
+import fs from "fs";
+import path from "path";
 import { codexManager } from "../codexManager";
 import { claudeManager } from "../claudeManager";
 import { droidCliManager } from "../droidCliManager";
@@ -31,65 +32,61 @@ const applySessionAuthEnv = (session: SessionRecord): (() => void) => {
 };
 
 /**
- * Gets git status and diff information from the workspace.
+ * Gets workspace file list for commit message generation.
  */
-function getGitContext(workspacePath: string): string {
+function getWorkspaceContext(workspacePath: string): string {
   try {
-    const cwd = workspacePath;
+    function getAllFiles(dirPath: string, baseDir: string = dirPath): string[] {
+      const files: string[] = [];
+      try {
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          const relativePath = path.relative(baseDir, fullPath);
 
-    // Check if it's a git repository
-    try {
-      execSync('git rev-parse --git-dir', { cwd, stdio: 'pipe' });
-    } catch {
-      return 'Not a git repository';
-    }
+          if (entry.name.startsWith('.')) continue;
+          if (entry.name === 'node_modules' || entry.name === '__pycache__') continue;
 
-    let context = '';
-
-    // Get status
-    try {
-      const status = execSync('git status --short', {
-        cwd,
-        encoding: 'utf-8',
-        maxBuffer: 1024 * 1024
-      });
-      context += `=== Git Status ===\n${status}\n\n`;
-    } catch (error) {
-      context += '=== Git Status ===\nError getting status\n\n';
-    }
-
-    // Get cached diff (staged changes)
-    try {
-      const cachedDiff = execSync('git diff --cached', {
-        cwd,
-        encoding: 'utf-8',
-        maxBuffer: 10 * 1024 * 1024
-      });
-      if (cachedDiff.trim()) {
-        context += `=== Staged Changes (git diff --cached) ===\n${cachedDiff}\n\n`;
+          if (entry.isDirectory()) {
+            files.push(...getAllFiles(fullPath, baseDir));
+          } else if (entry.isFile()) {
+            files.push(relativePath);
+          }
+        }
+      } catch (error) {
+        // Ignore errors
       }
-    } catch (error) {
-      // Might be empty or error
+      return files;
     }
 
-    // Get unstaged diff
-    try {
-      const diff = execSync('git diff', {
-        cwd,
-        encoding: 'utf-8',
-        maxBuffer: 10 * 1024 * 1024
-      });
-      if (diff.trim()) {
-        context += `=== Unstaged Changes (git diff) ===\n${diff}\n\n`;
+    const files = getAllFiles(workspacePath);
+    if (files.length === 0) {
+      return 'No files in workspace';
+    }
+
+    let context = '=== Workspace Files ===\n';
+    context += files.join('\n');
+    context += '\n\n';
+
+    // Sample some file contents for context (first 3 files)
+    for (let i = 0; i < Math.min(3, files.length); i++) {
+      const file = files[i];
+      const filePath = path.join(workspacePath, file);
+      try {
+        const stats = fs.statSync(filePath);
+        if (stats.size < 50 * 1024) { // Only read files smaller than 50KB
+          const content = fs.readFileSync(filePath, 'utf-8');
+          context += `=== ${file} ===\n${content.substring(0, 2000)}\n\n`;
+        }
+      } catch (error) {
+        // Skip files that can't be read
       }
-    } catch (error) {
-      // Might be empty or error
     }
 
-    return context || 'No git changes detected';
+    return context;
   } catch (error) {
-    console.error('Error getting git context:', error);
-    return `Error getting git context: ${error instanceof Error ? error.message : String(error)}`;
+    console.error('Error getting workspace context:', error);
+    return `Error getting workspace context: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 
@@ -102,22 +99,17 @@ export async function generateCommitMessage(
 ): Promise<string | null> {
   try {
     const workspacePath = getWorkspaceDirectory(session.id);
-    const gitContext = getGitContext(workspacePath);
+    const workspaceContext = getWorkspaceContext(workspacePath);
 
-    if (gitContext === 'Not a git repository') {
-      console.warn('[commitMessageService] Workspace is not a git repository');
-      return null;
-    }
-
-    if (gitContext === 'No git changes detected') {
-      console.warn('[commitMessageService] No git changes to commit');
+    if (workspaceContext === 'No files in workspace') {
+      console.warn('[commitMessageService] No files in workspace to commit');
       return null;
     }
 
     // Build the prompt based on git-commit.md format
-    const prompt = `Review the working tree and staged changes to craft a git commit message automatically.
+    const prompt = `Review the workspace files to craft a git commit message automatically.
 
-${gitContext}
+${workspaceContext}
 
 Generate a commit message following these rules:
 1. Start the subject with one of: Add, Allow, Enhance, Fix, Improve, Refactor, Remove, or Update

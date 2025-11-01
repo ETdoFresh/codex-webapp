@@ -1,4 +1,3 @@
-import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import database from "../db";
@@ -10,38 +9,184 @@ type GitHubTreeEntry = {
   type: "blob" | "tree" | "commit";
   sha?: string;
   content?: string;
+  url?: string;
+};
+
+type GitHubTreeResponse = {
+  sha: string;
+  url: string;
+  tree: GitHubTreeEntry[];
+  truncated: boolean;
 };
 
 /**
- * Gets all tracked and modified files from git status
+ * Recursively gets all files in a directory, excluding certain patterns
  */
-function getGitFiles(workspacePath: string): string[] {
+function getAllFilesInDirectory(dirPath: string, baseDir: string = dirPath): string[] {
+  const files: string[] = [];
+
   try {
-    // Get all tracked files that are modified, added, or deleted
-    const output = execSync('git status --porcelain', {
-      cwd: workspacePath,
-      encoding: 'utf-8',
-    });
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
 
-    const files: string[] = [];
-    const lines = output.split('\n').filter(line => line.trim());
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      const relativePath = path.relative(baseDir, fullPath);
 
-    for (const line of lines) {
-      // Git status format: XY filename
-      // We want files that are not deleted (D in second column)
-      const status = line.substring(0, 2);
-      const filename = line.substring(3).trim();
+      // Skip hidden files/directories and common ignore patterns
+      if (entry.name.startsWith('.')) {
+        continue;
+      }
+      if (entry.name === 'node_modules' || entry.name === '__pycache__') {
+        continue;
+      }
 
-      // Skip deleted files (they won't be in the working tree)
-      if (status[1] !== 'D' && status[0] !== 'D') {
-        files.push(filename);
+      if (entry.isDirectory()) {
+        files.push(...getAllFilesInDirectory(fullPath, baseDir));
+      } else if (entry.isFile()) {
+        files.push(relativePath);
       }
     }
-
-    return files;
   } catch (error) {
-    console.error('Error getting git files:', error);
-    return [];
+    console.error(`Error reading directory ${dirPath}:`, error);
+  }
+
+  return files;
+}
+
+/**
+ * Clones repository contents into the workspace
+ */
+export async function cloneRepositoryToWorkspace(
+  sessionId: string,
+  userId: string,
+): Promise<{ success: boolean; error?: string; filesCloned?: number }> {
+  try {
+    const session = database.getSession(sessionId);
+    if (!session) {
+      return { success: false, error: 'Session not found' };
+    }
+
+    const settings = database.getSessionSettings(sessionId);
+    if (!settings?.gitRemoteUrl || !settings?.gitBranch) {
+      return { success: false, error: 'Session does not have Git configuration' };
+    }
+
+    const token = database.getGitHubOAuthToken(userId);
+    if (!token) {
+      return { success: false, error: 'GitHub not connected' };
+    }
+
+    // Parse repo owner and name from URL
+    const repoMatch = settings.gitRemoteUrl.match(
+      /github\.com[/:]([^/]+)\/([^/.]+)/,
+    );
+    if (!repoMatch) {
+      return { success: false, error: 'Invalid GitHub repository URL' };
+    }
+
+    const [, owner, repo] = repoMatch;
+    const repoName = repo.replace(/\.git$/, '');
+    const branch = settings.gitBranch;
+
+    console.log(`[clone-repo] Cloning ${owner}/${repoName}:${branch} to workspace ${sessionId}`);
+
+    // Get the branch ref to get the commit SHA
+    const refResponse = await fetch(
+      `https://api.github.com/repos/${owner}/${repoName}/git/refs/heads/${branch}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token.accessToken}`,
+          Accept: 'application/vnd.github.v3+json',
+        },
+      },
+    );
+
+    if (!refResponse.ok) {
+      const errorText = await refResponse.text();
+      console.error('[clone-repo] Failed to get branch ref:', errorText);
+      return { success: false, error: `Failed to get branch: ${refResponse.status}` };
+    }
+
+    const refData = (await refResponse.json()) as {
+      object: { sha: string };
+    };
+    const commitSha = refData.object.sha;
+
+    // Get the tree for this commit (recursive to get all files)
+    const treeResponse = await fetch(
+      `https://api.github.com/repos/${owner}/${repoName}/git/trees/${commitSha}?recursive=1`,
+      {
+        headers: {
+          Authorization: `Bearer ${token.accessToken}`,
+          Accept: 'application/vnd.github.v3+json',
+        },
+      },
+    );
+
+    if (!treeResponse.ok) {
+      const errorText = await treeResponse.text();
+      console.error('[clone-repo] Failed to get tree:', errorText);
+      return { success: false, error: 'Failed to get repository tree' };
+    }
+
+    const treeData = (await treeResponse.json()) as GitHubTreeResponse;
+
+    const workspacePath = getWorkspaceDirectory(sessionId);
+
+    // Download all blobs and write to workspace
+    let filesCloned = 0;
+    for (const item of treeData.tree) {
+      // Only process blobs (files), not trees (directories)
+      if (item.type !== 'blob') {
+        continue;
+      }
+
+      // Get the blob content
+      const blobResponse = await fetch(
+        `https://api.github.com/repos/${owner}/${repoName}/git/blobs/${item.sha}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token.accessToken}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        },
+      );
+
+      if (!blobResponse.ok) {
+        console.warn(`[clone-repo] Failed to get blob for ${item.path}, skipping`);
+        continue;
+      }
+
+      const blobData = (await blobResponse.json()) as {
+        content: string;
+        encoding: string;
+        sha: string;
+      };
+
+      // Decode the content (it's base64 encoded)
+      const content = Buffer.from(blobData.content, 'base64').toString('utf-8');
+
+      // Write to workspace
+      const filePath = path.join(workspacePath, item.path);
+      const fileDir = path.dirname(filePath);
+
+      // Ensure directory exists
+      if (!fs.existsSync(fileDir)) {
+        fs.mkdirSync(fileDir, { recursive: true });
+      }
+
+      fs.writeFileSync(filePath, content, 'utf-8');
+      filesCloned++;
+    }
+
+    console.log(`[clone-repo] Successfully cloned ${filesCloned} files to workspace`);
+    return { success: true, filesCloned };
+  } catch (error) {
+    console.error('Error cloning repository to workspace:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
 
@@ -82,14 +227,6 @@ export async function commitAndPushToGitHub(
     const branch = settings.gitBranch;
 
     const workspacePath = getWorkspaceDirectory(sessionId);
-
-    // Stage all changes first
-    try {
-      execSync('git add -A', { cwd: workspacePath, stdio: 'pipe' });
-    } catch (error) {
-      console.error('Error staging files:', error);
-      return { success: false, error: 'Failed to stage files' };
-    }
 
     // Get the current branch ref
     const refResponse = await fetch(
@@ -133,17 +270,19 @@ export async function commitAndPushToGitHub(
     };
     const baseTreeSha = commitData.tree.sha;
 
-    // Get all changed files
-    const changedFiles = getGitFiles(workspacePath);
-    if (changedFiles.length === 0) {
-      return { success: false, error: 'No changes to commit' };
+    // Get all files in workspace
+    const workspaceFiles = getAllFilesInDirectory(workspacePath);
+    if (workspaceFiles.length === 0) {
+      return { success: false, error: 'No files in workspace to commit' };
     }
 
-    // Create blobs and tree entries for changed files
+    console.log(`[auto-commit] Found ${workspaceFiles.length} files in workspace:`, workspaceFiles.slice(0, 10));
+
+    // Create blobs and tree entries for all workspace files
     const treeEntries: GitHubTreeEntry[] = [];
     const failedFiles: string[] = [];
 
-    for (const file of changedFiles) {
+    for (const file of workspaceFiles) {
       const filePath = path.join(workspacePath, file);
 
       if (!fs.existsSync(filePath)) {

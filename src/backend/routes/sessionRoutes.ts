@@ -229,6 +229,8 @@ router.post(
 
     // If Git repo is provided, validate and create branch
     let finalBranch = gitBranch;
+    let settingsSaved = false;
+
     if (gitRemoteUrl) {
       const { ensureBranchForSession } = await import('../services/gitBranchManager');
       const branchResult = await ensureBranchForSession(
@@ -246,16 +248,41 @@ router.post(
       }
 
       finalBranch = branchResult.branchName;
+
+      // Save settings first so clone can access them
+      database.upsertSessionSettings({
+        sessionId: session.id,
+        githubRepo: body.githubRepo || null,
+        customEnvVars: body.customEnvVars || {},
+        dockerfilePath: body.dockerfilePath || null,
+        buildSettings: body.buildSettings || {},
+        gitRemoteUrl,
+        gitBranch: finalBranch,
+      });
+      settingsSaved = true;
+
+      // Clone repository contents into workspace
+      const { cloneRepositoryToWorkspace } = await import('../services/gitOperationsService');
+      const cloneResult = await cloneRepositoryToWorkspace(
+        session.id,
+        req.user!.id,
+      );
+
+      if (!cloneResult.success) {
+        console.warn(`[session-creation] Failed to clone repository: ${cloneResult.error}`);
+        // Don't fail the session creation, just log the warning
+      } else {
+        console.log(`[session-creation] Cloned ${cloneResult.filesCloned} files to workspace`);
+      }
     }
 
-    // Save session settings if provided
-    let shouldCreateContainer = false;
+    // Save session settings if not already saved
     if (
-      body.githubRepo ||
-      body.customEnvVars ||
-      body.dockerfilePath ||
-      body.buildSettings ||
-      gitRemoteUrl
+      !settingsSaved &&
+      (body.githubRepo ||
+        body.customEnvVars ||
+        body.dockerfilePath ||
+        body.buildSettings)
     ) {
       database.upsertSessionSettings({
         sessionId: session.id,
@@ -266,10 +293,10 @@ router.post(
         gitRemoteUrl,
         gitBranch: finalBranch,
       });
-
-      // Auto-create container if repo or dockerfile is provided
-      shouldCreateContainer = !!(gitRemoteUrl || body.dockerfilePath);
     }
+
+    // Auto-create container if repo or dockerfile is provided
+    const shouldCreateContainer = !!(gitRemoteUrl || body.dockerfilePath);
 
     // Automatically create container if configured
     if (shouldCreateContainer) {
