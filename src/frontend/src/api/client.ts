@@ -455,6 +455,7 @@ export async function getSessionSettings(sessionId: string): Promise<{
   buildSettings: Record<string, unknown>;
   gitRemoteUrl: string | null;
   gitBranch: string | null;
+  autoCommit: boolean;
 }> {
   const data = await request<{ settings: {
     id: string;
@@ -465,6 +466,7 @@ export async function getSessionSettings(sessionId: string): Promise<{
     buildSettings: Record<string, unknown>;
     gitRemoteUrl: string | null;
     gitBranch: string | null;
+    autoCommit: boolean;
   } }>(`/api/sessions/${sessionId}/settings`);
   return data.settings;
 }
@@ -609,6 +611,20 @@ export async function setSessionTitleLock(
     },
   );
   return response.session;
+}
+
+export async function setSessionAutoCommit(
+  sessionId: string,
+  enabled: boolean,
+): Promise<{ autoCommit: boolean }> {
+  const response = await request<{ settings: { autoCommit: boolean } }>(
+    `/api/sessions/${sessionId}/auto-commit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    },
+  );
+  return { autoCommit: response.settings.autoCommit };
 }
 
 export async function fetchDeployConfig(): Promise<DeployConfigResult> {

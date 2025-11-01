@@ -258,6 +258,10 @@ const migrations: string[] = [
   ON session_settings(git_remote_url, git_branch)
   WHERE git_remote_url IS NOT NULL AND git_branch IS NOT NULL
 `,
+  // Add auto_commit column for automatic commit/push after each turn
+  `
+  ALTER TABLE session_settings ADD COLUMN auto_commit INTEGER DEFAULT 0
+`,
   // GitHub OAuth tokens for Git operations
   `
   CREATE TABLE IF NOT EXISTS github_oauth_tokens (
@@ -469,6 +473,7 @@ class SQLiteDatabase implements IDatabase {
     buildSettings: string;
     gitRemoteUrl: string | null;
     gitBranch: string | null;
+    autoCommit: number;
     createdAt: string;
     updatedAt: string;
   }>;
@@ -483,6 +488,7 @@ class SQLiteDatabase implements IDatabase {
       build_settings: string;
       git_remote_url: string | null;
       git_branch: string | null;
+      auto_commit: number;
       created_at: string;
       updated_at: string;
     }
@@ -908,6 +914,7 @@ class SQLiteDatabase implements IDatabase {
         build_settings,
         git_remote_url,
         git_branch,
+        auto_commit,
         created_at,
         updated_at
       ) VALUES (
@@ -919,6 +926,7 @@ class SQLiteDatabase implements IDatabase {
         @buildSettings,
         @gitRemoteUrl,
         @gitBranch,
+        @autoCommit,
         @createdAt,
         @updatedAt
       )
@@ -929,6 +937,7 @@ class SQLiteDatabase implements IDatabase {
         build_settings = @buildSettings,
         git_remote_url = @gitRemoteUrl,
         git_branch = @gitBranch,
+        auto_commit = @autoCommit,
         updated_at = @updatedAt
     `);
     this.getSessionSettingsStmt = this.db.prepare(`
@@ -941,6 +950,7 @@ class SQLiteDatabase implements IDatabase {
         build_settings,
         git_remote_url,
         git_branch,
+        auto_commit,
         created_at,
         updated_at
       FROM session_settings
@@ -1812,6 +1822,7 @@ class SQLiteDatabase implements IDatabase {
     buildSettings?: Record<string, unknown>;
     gitRemoteUrl?: string | null;
     gitBranch?: string | null;
+    autoCommit?: boolean;
   }): SessionSettingsRecord {
     const existing = this.getSessionSettings(input.sessionId);
     const now = new Date().toISOString();
@@ -1827,6 +1838,7 @@ class SQLiteDatabase implements IDatabase {
       buildSettings: JSON.stringify(input.buildSettings ?? {}),
       gitRemoteUrl: input.gitRemoteUrl ?? existing?.gitRemoteUrl ?? null,
       gitBranch: input.gitBranch ?? existing?.gitBranch ?? null,
+      autoCommit: input.autoCommit !== undefined ? (input.autoCommit ? 1 : 0) : (existing?.autoCommit ? 1 : 0),
       createdAt,
       updatedAt: now,
     });
@@ -1852,6 +1864,7 @@ class SQLiteDatabase implements IDatabase {
       buildSettings: row.build_settings,
       gitRemoteUrl: row.git_remote_url,
       gitBranch: row.git_branch,
+      autoCommit: Boolean(row.auto_commit),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

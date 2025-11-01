@@ -25,6 +25,7 @@ import {
   updateMeta,
   updateSessionTitle,
   setSessionTitleLock,
+  setSessionAutoCommit,
   autoUpdateSessionTitle,
   type AutoTitleMessagePayload,
   getSessionSettings,
@@ -329,6 +330,7 @@ function AuthenticatedApp() {
   const [sessionSettings, setSessionSettings] = useState<{
     gitRemoteUrl: string | null;
     gitBranch: string | null;
+    autoCommit: boolean;
   } | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -611,6 +613,7 @@ function AuthenticatedApp() {
         setSessionSettings({
           gitRemoteUrl: settings.gitRemoteUrl,
           gitBranch: settings.gitBranch,
+          autoCommit: settings.autoCommit ?? false,
         });
       } catch (error) {
         if (!canceled) {
@@ -918,6 +921,26 @@ function AuthenticatedApp() {
       setTitleLocking(false);
     }
   }, [activeSession, applySessionUpdate, titleLocking]);
+
+  const handleAutoCommitToggle = useCallback(async () => {
+    if (!activeSession || !sessionSettings) {
+      return;
+    }
+
+    try {
+      const result = await setSessionAutoCommit(
+        activeSession.id,
+        !sessionSettings.autoCommit,
+      );
+      setSessionSettings({
+        ...sessionSettings,
+        autoCommit: result.autoCommit,
+      });
+    } catch (error) {
+      console.error("Failed to toggle auto-commit", error);
+      setErrorNotice("Unable to update auto-commit setting. Please try again.");
+    }
+  }, [activeSession, sessionSettings]);
 
   const handleTitleEditStart = useCallback(() => {
     if (!activeSession || activeSession.titleLocked) {
@@ -2544,12 +2567,25 @@ function AuthenticatedApp() {
                     )}
                   </p>
                   {sessionSettings?.gitBranch && (
-                    <p className="muted" style={{ marginTop: "0.5em" }}>
-                      Branch:{" "}
-                      <code style={{ fontSize: "0.9em" }}>
-                        {sessionSettings.gitBranch}
-                      </code>
-                    </p>
+                    <>
+                      <p className="muted" style={{ marginTop: "0.5em" }}>
+                        Branch:{" "}
+                        <code style={{ fontSize: "0.9em" }}>
+                          {sessionSettings.gitBranch}
+                        </code>
+                      </p>
+                      <p className="muted" style={{ marginTop: "0.5em" }}>
+                        <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5em" }}>
+                          <input
+                            type="checkbox"
+                            checked={sessionSettings.autoCommit}
+                            onChange={() => void handleAutoCommitToggle()}
+                            style={{ cursor: "pointer" }}
+                          />
+                          <span>Auto-commit after each turn</span>
+                        </label>
+                      </p>
+                    </>
                   )}
                 </div>
                 <div className="chat-header-tools">

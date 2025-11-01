@@ -24,6 +24,8 @@ import type IAgent from "../interfaces/IAgent";
 import { droidCliManager } from "../droidCliManager";
 import { getCopilotCliManager } from "../copilotCliManager";
 import { synchronizeUserAuthFiles } from "./userAuthManager";
+import { generateCommitMessage } from "./commitMessageService";
+import { commitAndPushToGitHub } from "./gitOperationsService";
 
 function getAgentManager(): IAgent {
   const meta = getCodexMeta();
@@ -515,6 +517,38 @@ export async function handleSessionMessageRequest(
     session: toSessionResponse(latestSession),
     usage,
   });
+
+  // Auto-commit if enabled
+  const settings = database.getSessionSettings(session.id);
+  if (settings?.autoCommit && session.userId) {
+    void (async () => {
+      try {
+        console.log(`[auto-commit] Starting auto-commit for session ${session.id}`);
+
+        const commitMessage = await generateCommitMessage(session);
+        if (!commitMessage) {
+          console.log(`[auto-commit] No commit message generated (no changes or not a git repo)`);
+          return;
+        }
+
+        console.log(`[auto-commit] Generated commit message: ${commitMessage.split('\n')[0]}`);
+
+        const result = await commitAndPushToGitHub(
+          session.id,
+          session.userId,
+          commitMessage,
+        );
+
+        if (result.success) {
+          console.log(`[auto-commit] Successfully committed: ${result.commitSha}`);
+        } else {
+          console.error(`[auto-commit] Failed: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('[auto-commit] Error during auto-commit:', error);
+      }
+    })();
+  }
 
   if (streamError) {
     const manager = getAgentManager();

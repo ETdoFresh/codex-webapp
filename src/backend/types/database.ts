@@ -96,6 +96,9 @@ export type SessionSettingsRecord = {
   customEnvVars: string; // JSON string
   dockerfilePath: string | null;
   buildSettings: string; // JSON string
+  gitRemoteUrl: string | null;
+  gitBranch: string | null;
+  autoCommit: boolean;
   createdAt: string;
   updatedAt: string;
 };

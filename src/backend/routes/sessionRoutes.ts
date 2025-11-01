@@ -156,6 +156,10 @@ const updateTitleLockSchema = z.object({
   locked: z.boolean()
 });
 
+const updateAutoCommitSchema = z.object({
+  enabled: z.boolean()
+});
+
 const autoTitleSchema = z.object({
   messages: z
     .array(z.any())
@@ -405,6 +409,24 @@ router.post(
     }
 
     res.json({ session: toSessionResponse(updated) });
+  })
+);
+
+router.post(
+  '/sessions/:id/auto-commit',
+  asyncHandler(async (req, res) => {
+    const session = findSessionOr404(req.params.id, req, res);
+    if (!session) {
+      return;
+    }
+
+    const body = updateAutoCommitSchema.parse(req.body ?? {});
+    const updated = database.upsertSessionSettings({
+      sessionId: session.id,
+      autoCommit: body.enabled,
+    });
+
+    res.json({ settings: updated });
   })
 );
 
