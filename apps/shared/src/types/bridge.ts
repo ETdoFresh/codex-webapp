@@ -1,8 +1,8 @@
 /**
- * postMessage protocol between Main App and Container App
+ * postMessage protocol between Main App and Service App
  */
 
-export type MainToContainerMessage =
+export type MainToServiceMessage =
   | {
       type: "AUTH_TOKEN";
       token: string;
@@ -17,7 +17,7 @@ export type MainToContainerMessage =
       };
     };
 
-export type ContainerToMainMessage =
+export type ServiceToMainMessage =
   | {
       type: "READY";
       sessionId: string;
@@ -33,8 +33,8 @@ export type ContainerToMainMessage =
       title: string;
     }
   | {
-      type: "CONTAINER_HEIGHT";
+      type: "SERVICE_HEIGHT";
       height: number;
     };
 
-export type BridgeMessage = MainToContainerMessage | ContainerToMainMessage;
+export type BridgeMessage = MainToServiceMessage | ServiceToMainMessage;

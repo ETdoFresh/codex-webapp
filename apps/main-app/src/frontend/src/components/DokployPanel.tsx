@@ -150,7 +150,7 @@ const DokployPanel = () => {
     <div className="deploy-panel">
       <h1 style={{ marginTop: 0 }}>Dokploy Configuration</h1>
       <p className="muted" style={{ marginBottom: "2em" }}>
-        Configure global Dokploy server settings. These settings apply to all container-based sessions.
+        Configure global Dokploy server settings. These settings apply to all service-based sessions.
       </p>
 
       {status && (
@@ -261,7 +261,7 @@ const DokployPanel = () => {
             <small className="muted">
               {environments.length > 0
                 ? "Select an environment from the list"
-                : "Required for creating new containers"}
+                : "Required for creating new services"}
             </small>
           </label>
         </div>

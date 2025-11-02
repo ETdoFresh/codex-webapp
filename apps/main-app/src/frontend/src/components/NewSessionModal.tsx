@@ -171,7 +171,7 @@ const NewSessionModal = ({ isOpen, onClose, onCreate }: NewSessionModalProps) =>
               disabled={loading}
             />
             <small className="form-help">
-              Optional repository URL to clone into container workspace
+              Optional repository URL to clone into service workspace
             </small>
           </div>
 
@@ -205,7 +205,7 @@ const NewSessionModal = ({ isOpen, onClose, onCreate }: NewSessionModalProps) =>
               disabled={loading}
             />
             <small className="form-help">
-              Path to custom Dockerfile (defaults to standard container image)
+              Path to custom Dockerfile (defaults to standard service image)
             </small>
           </div>
 
@@ -222,7 +222,7 @@ const NewSessionModal = ({ isOpen, onClose, onCreate }: NewSessionModalProps) =>
               rows={4}
             />
             <small className="form-help">
-              JSON object with environment variables for the container
+              JSON object with environment variables for the service
             </small>
           </div>
 

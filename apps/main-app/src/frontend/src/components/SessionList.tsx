@@ -6,7 +6,7 @@ type SessionListProps = {
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
   onDeleteSession: (sessionId: string) => void;
-  containerStatuses: Record<string, { status: string; url?: string }>;
+  serviceStatuses: Record<string, { status: string; url?: string }>;
 };
 
 const formatSessionDate = (dateString: string): string => {
@@ -29,7 +29,7 @@ const SessionList = ({
   onSelectSession,
   onNewSession,
   onDeleteSession,
-  containerStatuses,
+  serviceStatuses,
 }: SessionListProps) => {
   const getStatusIcon = (status?: string) => {
     switch (status) {
@@ -71,7 +71,7 @@ const SessionList = ({
         ) : (
           sessions.map((session) => {
             const isActive = session.id === activeSessionId;
-            const containerStatus = containerStatuses[session.id];
+            const serviceStatus = serviceStatuses[session.id];
 
             return (
               <div
@@ -105,9 +105,9 @@ const SessionList = ({
 
                 <div className="session-item-meta">
                   <span>{formatSessionDate(session.updatedAt)}</span>
-                  {containerStatus && (
-                    <span className="session-container-status" title={containerStatus.status}>
-                      {getStatusIcon(containerStatus.status)}
+                  {serviceStatus && (
+                    <span className="session-service-status" title={serviceStatus.status}>
+                      {getStatusIcon(serviceStatus.status)}
                     </span>
                   )}
                 </div>

@@ -29,10 +29,10 @@ export async function createService(
 
   try {
     // Update service status to "creating"
-    database.upsertSessionContainer({
+    database.upsertSessionService({
       sessionId,
       dokployAppId: null,
-      containerUrl: null,
+      serviceUrl: null,
       status: "creating",
       errorMessage: null,
     });
@@ -175,13 +175,13 @@ export async function createService(
     });
 
     // Generate service URL (assuming Dokploy pattern)
-    const containerUrl = `${globalConfig.baseUrl.replace(/\/api$/, "")}/${sessionId}`;
+    const serviceUrl = `${globalConfig.baseUrl.replace(/\/api$/, "")}/${sessionId}`;
 
     // Update service record with success
-    database.upsertSessionContainer({
+    database.upsertSessionService({
       sessionId,
       dokployAppId: applicationId,
-      containerUrl,
+      serviceUrl,
       status: "running",
       errorMessage: null,
     });
@@ -197,10 +197,10 @@ export async function createService(
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
-    database.upsertSessionContainer({
+    database.upsertSessionService({
       sessionId,
       dokployAppId: null,
-      containerUrl: null,
+      serviceUrl: null,
       status: "error",
       errorMessage,
     });
@@ -214,14 +214,14 @@ export async function createService(
 export async function getServiceStatus(
   sessionId: string,
 ): Promise<ServiceStatus | null> {
-  const service = database.getSessionContainer(sessionId);
+  const service = database.getSessionService(sessionId);
   if (!service) {
     return null;
   }
 
   return {
     status: service.status,
-    url: service.containerUrl || undefined,
+    url: service.serviceUrl || undefined,
     error: service.errorMessage || undefined,
   };
 }
@@ -234,7 +234,7 @@ export async function stopService(
   globalConfig: DeployConfig,
   apiKey: string,
 ): Promise<void> {
-  const service = database.getSessionContainer(sessionId);
+  const service = database.getSessionService(sessionId);
   if (!service || !service.dokployAppId) {
     throw new Error("Service not found");
   }
@@ -249,10 +249,10 @@ export async function stopService(
     },
   });
 
-  database.upsertSessionContainer({
+  database.upsertSessionService({
     sessionId,
     dokployAppId: service.dokployAppId,
-    containerUrl: service.containerUrl,
+    serviceUrl: service.serviceUrl,
     status: "stopped",
     errorMessage: null,
   });
@@ -266,7 +266,7 @@ export async function startService(
   globalConfig: DeployConfig,
   apiKey: string,
 ): Promise<void> {
-  const service = database.getSessionContainer(sessionId);
+  const service = database.getSessionService(sessionId);
   if (!service || !service.dokployAppId) {
     throw new Error("Service not found");
   }
@@ -281,10 +281,10 @@ export async function startService(
     },
   });
 
-  database.upsertSessionContainer({
+  database.upsertSessionService({
     sessionId,
     dokployAppId: service.dokployAppId,
-    containerUrl: service.containerUrl,
+    serviceUrl: service.serviceUrl,
     status: "running",
     errorMessage: null,
   });
@@ -298,7 +298,7 @@ export async function deleteService(
   globalConfig: DeployConfig,
   apiKey: string,
 ): Promise<void> {
-  const service = database.getSessionContainer(sessionId);
+  const service = database.getSessionService(sessionId);
   if (!service || !service.dokployAppId) {
     return;
   }
@@ -313,7 +313,7 @@ export async function deleteService(
     },
   });
 
-  database.deleteSessionContainer(sessionId);
+  database.deleteSessionService(sessionId);
 }
 
 /**
@@ -324,7 +324,7 @@ export async function getServiceLogs(
   globalConfig: DeployConfig,
   apiKey: string,
 ): Promise<string> {
-  const service = database.getSessionContainer(sessionId);
+  const service = database.getSessionService(sessionId);
   if (!service || !service.dokployAppId) {
     throw new Error("Service not found");
   }

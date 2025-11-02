@@ -11,7 +11,7 @@ export type SessionTokenPayload = {
 };
 
 /**
- * Generate a JWT token for a container to authenticate with the main app
+ * Generate a JWT token for a service to authenticate with the main app
  */
 export function generateSessionToken(
   sessionId: string,

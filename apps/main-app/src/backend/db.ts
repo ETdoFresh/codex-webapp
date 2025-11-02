@@ -19,7 +19,7 @@ import type {
   UserAuthFileRecord,
   UserRecord,
   LoginSessionRecord,
-  SessionContainerRecord,
+  SessionServiceRecord,
   SessionSettingsRecord,
 } from "./types/database";
 import type { DeployConfig } from "../shared/dokploy";
@@ -455,17 +455,17 @@ class SQLiteDatabase implements IDatabase {
     },
     UserAuthFileRow
   >;
-  private readonly upsertSessionContainerStmt: Statement<{
+  private readonly upsertSessionServiceStmt: Statement<{
     id: string;
     sessionId: string;
     dokployAppId: string | null;
-    containerUrl: string | null;
+    serviceUrl: string | null;
     status: string;
     errorMessage: string | null;
     createdAt: string;
     updatedAt: string;
   }>;
-  private readonly getSessionContainerStmt: Statement<
+  private readonly getSessionServiceStmt: Statement<
     { sessionId: string },
     {
       id: string;
@@ -478,7 +478,7 @@ class SQLiteDatabase implements IDatabase {
       updated_at: string;
     }
   >;
-  private readonly deleteSessionContainerStmt: Statement<{ sessionId: string }>;
+  private readonly deleteSessionServiceStmt: Statement<{ sessionId: string }>;
   private readonly upsertSessionSettingsStmt: Statement<{
     id: string;
     sessionId: string;
@@ -902,7 +902,7 @@ class SQLiteDatabase implements IDatabase {
       FROM user_auth_files
       WHERE user_id = @userId AND provider = @provider AND file_name = @fileName
     `);
-    this.upsertSessionContainerStmt = this.db.prepare(`
+    this.upsertSessionServiceStmt = this.db.prepare(`
       INSERT INTO session_containers (
         id,
         session_id,
@@ -916,7 +916,7 @@ class SQLiteDatabase implements IDatabase {
         @id,
         @sessionId,
         @dokployAppId,
-        @containerUrl,
+        @serviceUrl,
         @status,
         @errorMessage,
         @createdAt,
@@ -924,12 +924,12 @@ class SQLiteDatabase implements IDatabase {
       )
       ON CONFLICT(session_id) DO UPDATE SET
         dokploy_app_id = @dokployAppId,
-        container_url = @containerUrl,
+        container_url = @serviceUrl,
         status = @status,
         error_message = @errorMessage,
         updated_at = @updatedAt
     `);
-    this.getSessionContainerStmt = this.db.prepare(`
+    this.getSessionServiceStmt = this.db.prepare(`
       SELECT
         id,
         session_id,
@@ -942,7 +942,7 @@ class SQLiteDatabase implements IDatabase {
       FROM session_containers
       WHERE session_id = @sessionId
     `);
-    this.deleteSessionContainerStmt = this.db.prepare(`
+    this.deleteSessionServiceStmt = this.db.prepare(`
       DELETE FROM session_containers WHERE session_id = @sessionId
     `);
     this.upsertSessionSettingsStmt = this.db.prepare(`
@@ -1806,38 +1806,38 @@ class SQLiteDatabase implements IDatabase {
     return result.changes > 0;
   }
 
-  upsertSessionContainer(input: {
+  upsertSessionService(input: {
     sessionId: string;
     dokployAppId: string | null;
-    containerUrl: string | null;
-    status: SessionContainerRecord["status"];
+    serviceUrl: string | null;
+    status: SessionServiceRecord["status"];
     errorMessage?: string | null;
-  }): SessionContainerRecord {
-    const existing = this.getSessionContainer(input.sessionId);
+  }): SessionServiceRecord {
+    const existing = this.getSessionService(input.sessionId);
     const now = new Date().toISOString();
     const id = existing?.id ?? uuid();
     const createdAt = existing?.createdAt ?? now;
 
-    this.upsertSessionContainerStmt.run({
+    this.upsertSessionServiceStmt.run({
       id,
       sessionId: input.sessionId,
       dokployAppId: input.dokployAppId,
-      containerUrl: input.containerUrl,
+      serviceUrl: input.serviceUrl,
       status: input.status,
       errorMessage: input.errorMessage ?? null,
       createdAt,
       updatedAt: now,
     });
 
-    const updated = this.getSessionContainer(input.sessionId);
+    const updated = this.getSessionService(input.sessionId);
     if (!updated) {
-      throw new Error("Failed to retrieve stored session container record");
+      throw new Error("Failed to retrieve stored session service record");
     }
     return updated;
   }
 
-  getSessionContainer(sessionId: string): SessionContainerRecord | null {
-    const row = this.getSessionContainerStmt.get({ sessionId });
+  getSessionService(sessionId: string): SessionServiceRecord | null {
+    const row = this.getSessionServiceStmt.get({ sessionId });
     if (!row) {
       return null;
     }
@@ -1845,16 +1845,16 @@ class SQLiteDatabase implements IDatabase {
       id: row.id,
       sessionId: row.session_id,
       dokployAppId: row.dokploy_app_id,
-      containerUrl: row.container_url,
-      status: row.status as SessionContainerRecord["status"],
+      serviceUrl: row.container_url,
+      status: row.status as SessionServiceRecord["status"],
       errorMessage: row.error_message,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
   }
 
-  deleteSessionContainer(sessionId: string): boolean {
-    const result = this.deleteSessionContainerStmt.run({ sessionId });
+  deleteSessionService(sessionId: string): boolean {
+    const result = this.deleteSessionServiceStmt.run({ sessionId });
     return result.changes > 0;
   }
 

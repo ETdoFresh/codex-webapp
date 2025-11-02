@@ -8,7 +8,7 @@ type ClientConnection = {
   ws: WebSocket;
   sessionId: string;
   userId: string;
-  isContainer: boolean;
+  isService: boolean;
 };
 
 class WebSocketBridgeService {
@@ -56,8 +56,8 @@ class WebSocketBridgeService {
 
         // Upgrade the connection
         this.wss!.handleUpgrade(request, socket, head, (ws) => {
-          const isContainer = query.role === "container";
-          this.handleConnection(ws, sessionId, payload.userId, isContainer);
+          const isService = query.role === "service" || query.role === "container"; // Support both for backward compatibility
+          this.handleConnection(ws, sessionId, payload.userId, isService);
         });
       } catch (error) {
         console.error("WebSocket auth error:", error);
@@ -76,18 +76,18 @@ class WebSocketBridgeService {
     ws: WebSocket,
     sessionId: string,
     userId: string,
-    isContainer: boolean,
+    isService: boolean,
   ): void {
     const client: ClientConnection = {
       ws,
       sessionId,
       userId,
-      isContainer,
+      isService,
     };
 
     this.clients.set(ws, client);
 
-    const role = isContainer ? "container" : "client";
+    const role = isService ? "service" : "client";
     console.log(
       `[WebSocket Bridge] ${role} connected to session ${sessionId}`,
     );
@@ -129,8 +129,8 @@ class WebSocketBridgeService {
    * Handle incoming message from a client
    */
   private handleMessage(client: ClientConnection, message: any): void {
-    // If this is a container sending a stream chunk, broadcast to all clients watching this session
-    if (client.isContainer && message.type === "stream_chunk") {
+    // If this is a service sending a stream chunk, broadcast to all clients watching this session
+    if (client.isService && message.type === "stream_chunk") {
       this.broadcastToSession(client.sessionId, message, client.ws);
     }
   }

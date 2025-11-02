@@ -2081,8 +2081,8 @@ function AuthenticatedApp() {
       pendingScrollToBottomRef.current = true;
       setChatViewMode("formatted");
 
-      // Note: Container is automatically created by the backend if repo/dockerfile is configured.
-      // The container status polling (useEffect below) will show the container creation progress.
+      // Note: Service is automatically created by the backend if repo/dockerfile is configured.
+      // The service status polling (useEffect below) will show the service creation progress.
     } catch (error) {
       console.error("Failed to create session", error);
       setErrorNotice("Unable to create a new session. Please try again.");

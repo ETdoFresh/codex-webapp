@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { ContainerToMainMessage, MainToContainerMessage } from "@codex-webapp/shared";
+import type { ServiceToMainMessage, MainToServiceMessage } from "@codex-webapp/shared";
 
-type ContainerIframeProps = {
-  containerUrl: string;
+type ServiceIframeProps = {
+  serviceUrl: string;
   sessionId: string;
 };
 
-const ContainerIframe = ({ containerUrl, sessionId }: ContainerIframeProps) => {
+const ServiceIframe = ({ serviceUrl, sessionId }: ServiceIframeProps) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const sendToContainer = useCallback((message: MainToContainerMessage) => {
+  const sendToService = useCallback((message: MainToServiceMessage) => {
     if (!iframeRef.current?.contentWindow) {
-      console.warn("[Main App] Cannot send message to container: iframe not ready");
+      console.warn("[Main App] Cannot send message to service: iframe not ready");
       return;
     }
 
@@ -22,77 +22,77 @@ const ContainerIframe = ({ containerUrl, sessionId }: ContainerIframeProps) => {
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // In production, validate event.origin matches containerUrl
-      // if (!event.origin.startsWith(containerUrl)) return;
+      // In production, validate event.origin matches serviceUrl
+      // if (!event.origin.startsWith(serviceUrl)) return;
 
       try {
-        const message = event.data as ContainerToMainMessage;
+        const message = event.data as ServiceToMainMessage;
 
         switch (message.type) {
           case "READY":
-            console.log("[Main App] Container is ready:", message.sessionId);
+            console.log("[Main App] Service is ready:", message.sessionId);
             setStatus("ready");
             setErrorMessage(null);
             break;
 
           case "ERROR":
-            console.error("[Main App] Container error:", message.error);
+            console.error("[Main App] Service error:", message.error);
             setStatus("error");
             setErrorMessage(message.error);
             break;
 
           case "TITLE_SUGGEST":
-            console.log("[Main App] Container suggests title:", message.title);
+            console.log("[Main App] Service suggests title:", message.title);
             // Could update session title here
             break;
 
-          case "CONTAINER_HEIGHT":
+          case "SERVICE_HEIGHT":
             // Could adjust iframe height dynamically
             break;
         }
       } catch (error) {
-        console.error("[Main App] Failed to handle container message:", error);
+        console.error("[Main App] Failed to handle service message:", error);
       }
     };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [containerUrl]);
+  }, [serviceUrl]);
 
-  // Send initial auth token to container
+  // Send initial auth token to service
   useEffect(() => {
     if (status === "ready") {
       // In a real implementation, you might send settings or auth info
-      sendToContainer({
+      sendToService({
         type: "SETTINGS_UPDATE",
         settings: {
           autoCommit: true,
         },
       });
     }
-  }, [status, sendToContainer]);
+  }, [status, sendToService]);
 
-  const iframeSrc = `${containerUrl}?sessionId=${sessionId}`;
+  const iframeSrc = `${serviceUrl}?sessionId=${sessionId}`;
 
   return (
-    <div className="container-iframe-wrapper">
+    <div className="service-iframe-wrapper">
       {status === "loading" && (
-        <div className="container-loading">
-          <p>Loading container...</p>
+        <div className="service-loading">
+          <p>Loading service...</p>
         </div>
       )}
 
       {status === "error" && (
-        <div className="container-error">
-          <h3>Container Error</h3>
-          <p>{errorMessage || "Failed to load container"}</p>
+        <div className="service-error">
+          <h3>Service Error</h3>
+          <p>{errorMessage || "Failed to load service"}</p>
         </div>
       )}
 
       <iframe
         ref={iframeRef}
         src={iframeSrc}
-        className="container-iframe"
+        className="service-iframe"
         title={`Session ${sessionId}`}
         sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
         style={{
@@ -103,4 +103,4 @@ const ContainerIframe = ({ containerUrl, sessionId }: ContainerIframeProps) => {
   );
 };
 
-export default ContainerIframe;
+export default ServiceIframe;

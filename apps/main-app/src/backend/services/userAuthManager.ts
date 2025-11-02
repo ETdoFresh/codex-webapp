@@ -105,7 +105,7 @@ export const synchronizeUserAuthFiles = (userId: string): {
 };
 
 /**
- * Exports user auth files as base64-encoded environment variables for container deployment
+ * Exports user auth files as base64-encoded environment variables for service deployment
  */
 export const exportAuthFilesAsEnvVars = (
   userId: string,

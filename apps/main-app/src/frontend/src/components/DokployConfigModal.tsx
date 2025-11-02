@@ -148,7 +148,7 @@ export const DokployConfigModal = ({ isOpen, onClose }: DokployConfigModalProps)
       >
         <h2>Dokploy Configuration</h2>
         <p className="modal-description">
-          Configure global Dokploy server settings. These settings apply to all container-based sessions.
+          Configure global Dokploy server settings. These settings apply to all service-based sessions.
         </p>
 
         {status && (

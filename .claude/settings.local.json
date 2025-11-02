@@ -40,7 +40,8 @@
       "Bash(node test-auth-fix.cjs)",
       "Bash(git add src/backend/codexManager.ts)",
       "Bash(python3:*)",
-      "Bash(ps:*)"
+      "Bash(ps:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

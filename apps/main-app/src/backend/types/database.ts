@@ -84,11 +84,11 @@ export type UserAuthFileRecord = {
   updatedAt: string;
 };
 
-export type SessionContainerRecord = {
+export type SessionServiceRecord = {
   id: string;
   sessionId: string;
   dokployAppId: string | null;
-  containerUrl: string | null;
+  serviceUrl: string | null;
   status: 'creating' | 'running' | 'stopped' | 'error';
   errorMessage: string | null;
   createdAt: string;

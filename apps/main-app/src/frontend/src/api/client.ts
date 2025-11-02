@@ -138,20 +138,20 @@ export async function impersonateUser(userId: string): Promise<AuthUser> {
   return data.user;
 }
 
-// Container management
-export async function createSessionContainer(sessionId: string): Promise<void> {
-  await request(`/api/sessions/${sessionId}/container/create`, {
+// Service management
+export async function createSessionService(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/service/create`, {
     method: "POST",
   });
 }
 
-export async function getSessionContainerStatus(
+export async function getSessionServiceStatus(
   sessionId: string,
 ): Promise<{ status: string; url?: string; error?: string }> {
   try {
-    return await request(`/api/sessions/${sessionId}/container/status`);
+    return await request(`/api/sessions/${sessionId}/service/status`);
   } catch (error) {
-    // If container doesn't exist (404), return a "not found" status instead of throwing
+    // If service doesn't exist (404), return a "not found" status instead of throwing
     if (error instanceof ApiError && error.status === 404) {
       return { status: "not_found" };
     }
@@ -160,24 +160,24 @@ export async function getSessionContainerStatus(
   }
 }
 
-export async function getSessionContainerLogs(sessionId: string): Promise<{ logs: string }> {
-  return await request(`/api/sessions/${sessionId}/container/logs`);
+export async function getSessionServiceLogs(sessionId: string): Promise<{ logs: string }> {
+  return await request(`/api/sessions/${sessionId}/service/logs`);
 }
 
-export async function startSessionContainer(sessionId: string): Promise<void> {
-  await request(`/api/sessions/${sessionId}/container/start`, {
+export async function startSessionService(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/service/start`, {
     method: "POST",
   });
 }
 
-export async function stopSessionContainer(sessionId: string): Promise<void> {
-  await request(`/api/sessions/${sessionId}/container/stop`, {
+export async function stopSessionService(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/service/stop`, {
     method: "POST",
   });
 }
 
-export async function deleteSessionContainer(sessionId: string): Promise<void> {
-  await request(`/api/sessions/${sessionId}/container`, {
+export async function deleteSessionService(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/service`, {
     method: "DELETE",
   });
 }

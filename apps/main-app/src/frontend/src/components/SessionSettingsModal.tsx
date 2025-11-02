@@ -106,10 +106,10 @@ const SessionSettingsModal = ({ open, onClose, onSubmit }: Props) => {
           overflow: "auto",
         }}
       >
-        <h2 style={{ marginTop: 0 }}>Create New Session Container</h2>
+        <h2 style={{ marginTop: 0 }}>Create New Session Service</h2>
         <p className="muted" style={{ marginBottom: "1.5em" }}>
-          Configure settings for your new container-based session. Each session
-          will run in its own isolated Dokploy container.
+          Configure settings for your new service-based session. Each session
+          will run in its own isolated Dokploy service.
         </p>
 
         <form onSubmit={handleSubmit}>
@@ -140,7 +140,7 @@ const SessionSettingsModal = ({ open, onClose, onSubmit }: Props) => {
               style={{ width: "100%" }}
             />
             <small className="muted">
-              Clone this repository into the container workspace
+              Clone this repository into the service workspace
             </small>
           </label>
 

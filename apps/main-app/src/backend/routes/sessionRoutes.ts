@@ -295,11 +295,11 @@ router.post(
       });
     }
 
-    // Auto-create container if repo or dockerfile is provided
-    const shouldCreateContainer = !!(gitRemoteUrl || body.dockerfilePath);
+    // Auto-create service if repo or dockerfile is provided
+    const shouldCreateService = !!(gitRemoteUrl || body.dockerfilePath);
 
-    // Automatically create container if configured
-    if (shouldCreateContainer) {
+    // Automatically create service if configured
+    if (shouldCreateService) {
       try {
         // Get global deploy config
         const deployConfigRow = database.getDeployConfig();

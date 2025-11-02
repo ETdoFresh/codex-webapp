@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import SessionList from "./components/SessionList";
-import ContainerIframe from "./components/ContainerIframe";
+import ServiceIframe from "./components/ServiceIframe";
 import AdminPanel from "./components/AdminPanel";
 import DokployPanel from "./components/DokployPanel";
 import NewSessionModal from "./components/NewSessionModal";
@@ -23,9 +23,9 @@ function AppSimplified() {
   const [theme, setTheme] = useState<Theme>("dark");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"container" | "admin" | "dokploy">("container");
+  const [viewMode, setViewMode] = useState<"service" | "admin" | "dokploy">("service");
   const [loading, setLoading] = useState(true);
-  const [containerStatuses, setContainerStatuses] = useState<Record<string, any>>({});
+  const [serviceStatuses, setServiceStatuses] = useState<Record<string, any>>({});
   const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
   const tagline = useMemo(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)], []);
 
@@ -65,29 +65,29 @@ function AppSimplified() {
     };
   }, [user]);
 
-  // Load container statuses
+  // Load service statuses
   useEffect(() => {
     if (!user || sessions.length === 0) return;
 
-    async function loadContainerStatuses() {
+    async function loadServiceStatuses() {
       const statuses: Record<string, any> = {};
 
       for (const session of sessions) {
         try {
-          const response = await fetch(`/api/sessions/${session.id}/container/status`);
+          const response = await fetch(`/api/sessions/${session.id}/service/status`);
           if (response.ok) {
             const data = await response.json();
             statuses[session.id] = data;
           }
         } catch (error) {
-          // Ignore errors for individual containers
+          // Ignore errors for individual services
         }
       }
 
-      setContainerStatuses(statuses);
+      setServiceStatuses(statuses);
     }
 
-    loadContainerStatuses();
+    loadServiceStatuses();
   }, [user, sessions]);
 
   const handleNewSession = useCallback(() => {
@@ -106,8 +106,8 @@ function AppSimplified() {
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(newSession.id);
 
-      // Create container for the new session
-      await fetch(`/api/sessions/${newSession.id}/container/create`, {
+      // Create service for the new session
+      await fetch(`/api/sessions/${newSession.id}/service/create`, {
         method: "POST",
       });
     } catch (error) {
@@ -165,8 +165,8 @@ function AppSimplified() {
     );
   }
 
-  const containerStatus = activeSessionId ? containerStatuses[activeSessionId] : null;
-  const containerUrl = containerStatus?.url;
+  const serviceStatus = activeSessionId ? serviceStatuses[activeSessionId] : null;
+  const serviceUrl = serviceStatus?.url;
 
   return (
     <div className="app-layout">
@@ -220,11 +220,11 @@ function AppSimplified() {
           activeSessionId={activeSessionId}
           onSelectSession={(id) => {
             setActiveSessionId(id);
-            setViewMode("container");
+            setViewMode("service");
           }}
           onNewSession={handleNewSession}
           onDeleteSession={handleDeleteSession}
-          containerStatuses={containerStatuses}
+          serviceStatuses={serviceStatuses}
         />
 
         {/* Right Panel */}
@@ -237,16 +237,16 @@ function AppSimplified() {
             <div className="message-panel">
               <DokployPanel />
             </div>
-          ) : activeSession && containerUrl ? (
-            <ContainerIframe containerUrl={containerUrl} sessionId={activeSession.id} />
+          ) : activeSession && serviceUrl ? (
+            <ServiceIframe serviceUrl={serviceUrl} sessionId={activeSession.id} />
           ) : activeSession ? (
-            <div className="container-loading">
-              <h3>Container Starting...</h3>
-              <p>Your session container is being provisioned.</p>
-              <p>Status: {containerStatus?.status || "unknown"}</p>
+            <div className="service-loading">
+              <h3>Service Starting...</h3>
+              <p>Your session service is being provisioned.</p>
+              <p>Status: {serviceStatus?.status || "unknown"}</p>
             </div>
           ) : (
-            <div className="container-loading">
+            <div className="service-loading">
               <h3>No Session Selected</h3>
               <p>Create or select a session to get started.</p>
             </div>

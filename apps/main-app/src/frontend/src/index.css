@@ -153,8 +153,8 @@ body,
   height: 100%;
 }
 
-/* Container iframe styles */
-.container-iframe-wrapper {
+/* Service iframe styles */
+.service-iframe-wrapper {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -162,15 +162,15 @@ body,
   overflow: hidden;
 }
 
-.container-iframe {
+.service-iframe {
   width: 100%;
   height: 100%;
   border: none;
   flex: 1;
 }
 
-.container-loading,
-.container-error {
+.service-loading,
+.service-error {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -179,14 +179,14 @@ body,
   text-align: center;
 }
 
-.container-error {
+.service-error {
   background: #ffebee;
   color: #c62828;
   border-radius: 8px;
   margin: 20px;
 }
 
-.container-error h3 {
+.service-error h3 {
   margin-bottom: 12px;
 }
 
