@@ -211,6 +211,13 @@ export type DeployApplicationsResponse = {
   }>;
 };
 
+export type DeployEnvironmentsResponse = {
+  environments: Array<{
+    environmentId: string;
+    name: string;
+  }>;
+};
+
 export type DeployUploadResponse = {
   artifactKey: string;
   artifactUrl: string;

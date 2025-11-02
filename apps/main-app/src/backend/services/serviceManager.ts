@@ -4,7 +4,7 @@ import type { DeployConfig } from "../../shared/dokploy";
 import type { SessionSettingsRecord } from "../types/database";
 import { generateSessionToken } from "./sessionTokenService";
 
-type CreateContainerOptions = {
+type CreateServiceOptions = {
   sessionId: string;
   settings: SessionSettingsRecord;
   userId: string;
@@ -13,22 +13,22 @@ type CreateContainerOptions = {
   authEnvVars: Record<string, string>;
 };
 
-type ContainerStatus = {
+type ServiceStatus = {
   status: "creating" | "running" | "stopped" | "error";
   url?: string;
   error?: string;
 };
 
 /**
- * Creates a new Dokploy application container for a session
+ * Creates a new Dokploy application service for a session
  */
-export async function createContainer(
-  options: CreateContainerOptions,
+export async function createService(
+  options: CreateServiceOptions,
 ): Promise<void> {
   const { sessionId, settings, userId, globalConfig, apiKey, authEnvVars } = options;
 
   try {
-    // Update container status to "creating"
+    // Update service status to "creating"
     database.upsertSessionContainer({
       sessionId,
       dokployAppId: null,
@@ -49,8 +49,29 @@ export async function createContainer(
       unknown
     >;
 
-    // Generate session token for container authentication
+    // Generate session token for service authentication
     const sessionToken = generateSessionToken(sessionId, userId);
+
+    // Get or create environment ID for the project
+    // If not configured, query Dokploy for environments and use the first one
+    let environmentId: string | undefined = globalConfig.environmentId;
+
+    if (!environmentId) {
+      console.log('[SERVICE] No environmentId in config, querying Dokploy for environments...');
+      try {
+        const environments = await client.request<any[]>({
+          method: "GET",
+          path: `/project.${globalConfig.projectId}.getEnvironments`,
+        });
+        if (environments && environments.length > 0) {
+          environmentId = environments[0].environmentId;
+          console.log(`[SERVICE] Using first environment: ${environmentId}`);
+        }
+      } catch (error) {
+        console.error('[SERVICE] Failed to query environments:', error);
+        console.log('[SERVICE] Will attempt to create application without environmentId');
+      }
+    }
 
     // Create application in Dokploy
     const createBody: Record<string, unknown> = {
@@ -59,9 +80,16 @@ export async function createContainer(
       projectId: globalConfig.projectId,
     };
 
+    // Only add environmentId if we have one
+    if (environmentId) {
+      createBody.environmentId = environmentId;
+    }
+
     if (globalConfig.serverId) {
       createBody.serverId = globalConfig.serverId;
     }
+
+    console.log('[SERVICE] Creating Dokploy application with body:', JSON.stringify(createBody, null, 2));
 
     const result = await client.request<{
       applicationId?: string;
@@ -146,10 +174,10 @@ export async function createContainer(
       },
     });
 
-    // Generate container URL (assuming Dokploy pattern)
+    // Generate service URL (assuming Dokploy pattern)
     const containerUrl = `${globalConfig.baseUrl.replace(/\/api$/, "")}/${sessionId}`;
 
-    // Update container record with success
+    // Update service record with success
     database.upsertSessionContainer({
       sessionId,
       dokployAppId: applicationId,
@@ -181,34 +209,34 @@ export async function createContainer(
 }
 
 /**
- * Gets the current status of a session container
+ * Gets the current status of a session service
  */
-export async function getContainerStatus(
+export async function getServiceStatus(
   sessionId: string,
-): Promise<ContainerStatus | null> {
-  const container = database.getSessionContainer(sessionId);
-  if (!container) {
+): Promise<ServiceStatus | null> {
+  const service = database.getSessionContainer(sessionId);
+  if (!service) {
     return null;
   }
 
   return {
-    status: container.status,
-    url: container.containerUrl || undefined,
-    error: container.errorMessage || undefined,
+    status: service.status,
+    url: service.containerUrl || undefined,
+    error: service.errorMessage || undefined,
   };
 }
 
 /**
- * Stops a running container
+ * Stops a running service
  */
-export async function stopContainer(
+export async function stopService(
   sessionId: string,
   globalConfig: DeployConfig,
   apiKey: string,
 ): Promise<void> {
-  const container = database.getSessionContainer(sessionId);
-  if (!container || !container.dokployAppId) {
-    throw new Error("Container not found");
+  const service = database.getSessionContainer(sessionId);
+  if (!service || !service.dokployAppId) {
+    throw new Error("Service not found");
   }
 
   const client = createDokployClient(globalConfig, apiKey);
@@ -217,30 +245,30 @@ export async function stopContainer(
     method: "POST",
     path: "/application.stop",
     body: {
-      applicationId: container.dokployAppId,
+      applicationId: service.dokployAppId,
     },
   });
 
   database.upsertSessionContainer({
     sessionId,
-    dokployAppId: container.dokployAppId,
-    containerUrl: container.containerUrl,
+    dokployAppId: service.dokployAppId,
+    containerUrl: service.containerUrl,
     status: "stopped",
     errorMessage: null,
   });
 }
 
 /**
- * Starts a stopped container
+ * Starts a stopped service
  */
-export async function startContainer(
+export async function startService(
   sessionId: string,
   globalConfig: DeployConfig,
   apiKey: string,
 ): Promise<void> {
-  const container = database.getSessionContainer(sessionId);
-  if (!container || !container.dokployAppId) {
-    throw new Error("Container not found");
+  const service = database.getSessionContainer(sessionId);
+  if (!service || !service.dokployAppId) {
+    throw new Error("Service not found");
   }
 
   const client = createDokployClient(globalConfig, apiKey);
@@ -249,29 +277,29 @@ export async function startContainer(
     method: "POST",
     path: "/application.start",
     body: {
-      applicationId: container.dokployAppId,
+      applicationId: service.dokployAppId,
     },
   });
 
   database.upsertSessionContainer({
     sessionId,
-    dokployAppId: container.dokployAppId,
-    containerUrl: container.containerUrl,
+    dokployAppId: service.dokployAppId,
+    containerUrl: service.containerUrl,
     status: "running",
     errorMessage: null,
   });
 }
 
 /**
- * Deletes a container from Dokploy
+ * Deletes a service from Dokploy
  */
-export async function deleteContainer(
+export async function deleteService(
   sessionId: string,
   globalConfig: DeployConfig,
   apiKey: string,
 ): Promise<void> {
-  const container = database.getSessionContainer(sessionId);
-  if (!container || !container.dokployAppId) {
+  const service = database.getSessionContainer(sessionId);
+  if (!service || !service.dokployAppId) {
     return;
   }
 
@@ -281,7 +309,7 @@ export async function deleteContainer(
     method: "DELETE",
     path: "/application.delete",
     body: {
-      applicationId: container.dokployAppId,
+      applicationId: service.dokployAppId,
     },
   });
 
@@ -289,16 +317,16 @@ export async function deleteContainer(
 }
 
 /**
- * Gets logs for a container
+ * Gets logs for a service
  */
-export async function getContainerLogs(
+export async function getServiceLogs(
   sessionId: string,
   globalConfig: DeployConfig,
   apiKey: string,
 ): Promise<string> {
-  const container = database.getSessionContainer(sessionId);
-  if (!container || !container.dokployAppId) {
-    throw new Error("Container not found");
+  const service = database.getSessionContainer(sessionId);
+  if (!service || !service.dokployAppId) {
+    throw new Error("Service not found");
   }
 
   const client = createDokployClient(globalConfig, apiKey);
@@ -307,7 +335,7 @@ export async function getContainerLogs(
     method: "GET",
     path: "/application.logs",
     query: {
-      applicationId: container.dokployAppId,
+      applicationId: service.dokployAppId,
     },
   });
 

@@ -96,6 +96,12 @@ export const createDokployClient = (
           details = null;
         }
 
+        console.error('[DOKPLOY] Request failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          details: JSON.stringify(details, null, 2)
+        });
+
         const error = new Error(
           `Dokploy request failed with status ${response.status}: ${response.statusText}`,
         );

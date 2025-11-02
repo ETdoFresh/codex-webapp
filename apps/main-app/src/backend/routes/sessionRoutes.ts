@@ -10,7 +10,7 @@ import { handleSessionMessageRequest } from '../services/sessionMessageService';
 import { ensureWorkspaceDirectory, getWorkspaceDirectory } from '../workspaces';
 import { messageToResponse, toSessionResponse } from '../types/api';
 import { requireAuth } from '../middleware/auth';
-import { createContainer } from '../services/containerManager';
+import { createService } from '../services/serviceManager';
 import { exportAuthFilesAsEnvVars } from '../services/userAuthManager';
 import { decryptSecret } from '../utils/secretVault';
 
@@ -320,8 +320,8 @@ router.post(
               // Export auth files as env vars
               const authEnvVars = exportAuthFilesAsEnvVars(req.user!.id);
 
-              // Create container asynchronously (don't wait for completion)
-              createContainer({
+              // Create service asynchronously (don't wait for completion)
+              createService({
                 sessionId: session.id,
                 settings,
                 userId: req.user!.id,
@@ -329,14 +329,14 @@ router.post(
                 apiKey,
                 authEnvVars,
               }).catch((error) => {
-                console.error(`Failed to auto-create container for session ${session.id}:`, error);
+                console.error(`Failed to auto-create service for session ${session.id}:`, error);
               });
             }
           }
         }
       } catch (error) {
         // Log error but don't fail session creation
-        console.error(`Error initiating container creation for session ${session.id}:`, error);
+        console.error(`Error initiating service creation for session ${session.id}:`, error);
       }
     }
 

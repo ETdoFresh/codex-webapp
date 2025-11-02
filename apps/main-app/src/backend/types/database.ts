@@ -51,6 +51,9 @@ export type DeployConfigRow = {
   config: DeployConfig;
   updatedAt: string;
   hasApiKey: boolean;
+  apiKeyCipher?: string | null;
+  apiKeyIv?: string | null;
+  apiKeyTag?: string | null;
 };
 
 export type UserRecord = {

@@ -17,11 +17,13 @@ type DokployConfigModalProps = {
 };
 
 export const DokployConfigModal = ({ isOpen, onClose }: DokployConfigModalProps) => {
+  // Component for configuring Dokploy settings
   const [initialConfig, setInitialConfig] = useState<DeployConfigResult | null>(null);
   const [baseUrl, setBaseUrl] = useState<string>("");
   const [authMethod, setAuthMethod] = useState<"x-api-key" | "authorization">("x-api-key");
   const [apiKeyInput, setApiKeyInput] = useState<string>("");
   const [projectId, setProjectId] = useState<string>("");
+  const [environmentId, setEnvironmentId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -35,6 +37,7 @@ export const DokployConfigModal = ({ isOpen, onClose }: DokployConfigModalProps)
       setBaseUrl(data.baseUrl || "");
       setAuthMethod(data.authMethod || "x-api-key");
       setProjectId(data.projectId || "");
+      setEnvironmentId(data.environmentId || "");
       setApiKeyInput("");
       setStatus(null);
     } catch (error) {
@@ -92,6 +95,7 @@ export const DokployConfigModal = ({ isOpen, onClose }: DokployConfigModalProps)
         baseUrl,
         authMethod,
         projectId,
+        environmentId,
         apiKey: apiKeyInput || undefined,
       };
 
@@ -211,6 +215,18 @@ export const DokployConfigModal = ({ isOpen, onClose }: DokployConfigModalProps)
               <small className="muted">Required for creating new containers</small>
             </label>
 
+            <label style={{ display: "block", marginBottom: "1em" }}>
+              <span style={{ display: "block", marginBottom: "0.5em" }}>Environment ID</span>
+              <input
+                type="text"
+                value={environmentId}
+                onChange={(e) => setEnvironmentId(e.target.value)}
+                placeholder="Your Dokploy environment ID"
+                style={{ width: "100%" }}
+              />
+              <small className="muted">Required for creating new containers</small>
+            </label>
+
             <div style={{ display: "flex", gap: "1em", marginTop: "2em" }}>
               <button
                 type="button"
@@ -222,7 +238,7 @@ export const DokployConfigModal = ({ isOpen, onClose }: DokployConfigModalProps)
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={saving || !baseUrl || !projectId}
+                disabled={saving || !baseUrl || !projectId || !environmentId}
               >
                 {saving ? "Saving…" : "Save Settings"}
               </button>

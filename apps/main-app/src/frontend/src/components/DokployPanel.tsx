@@ -3,6 +3,7 @@ import {
   fetchDeployConfig,
   updateDeployConfig,
   testDeployConnection,
+  fetchDokployEnvironments,
 } from "../api/client";
 import type { DeployConfigPayload, DeployConfigResult } from "../api/types";
 
@@ -17,11 +18,14 @@ const DokployPanel = () => {
   const [authMethod, setAuthMethod] = useState<"x-api-key" | "authorization">("x-api-key");
   const [apiKeyInput, setApiKeyInput] = useState<string>("");
   const [projectId, setProjectId] = useState<string>("");
+  const [environmentId, setEnvironmentId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState<StatusMessage | null>(null);
   const [projects, setProjects] = useState<Array<{ projectId: string; name: string }>>([]);
+  const [environments, setEnvironments] = useState<Array<{ environmentId: string; name: string }>>([]);
+  const [loadingEnvironments, setLoadingEnvironments] = useState(false);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -31,6 +35,7 @@ const DokployPanel = () => {
       setBaseUrl(data.baseUrl || "");
       setAuthMethod(data.authMethod || "x-api-key");
       setProjectId(data.projectId || "");
+      setEnvironmentId(data.environmentId || "");
       setApiKeyInput("");
       setStatus(null);
     } catch (error) {
@@ -44,6 +49,30 @@ const DokployPanel = () => {
   useEffect(() => {
     void loadConfig();
   }, [loadConfig]);
+
+  useEffect(() => {
+    const fetchEnvironments = async () => {
+      if (!projectId) {
+        setEnvironments([]);
+        return;
+      }
+
+      console.log('[DokployPanel] Fetching environments for projectId:', projectId);
+      setLoadingEnvironments(true);
+      try {
+        const result = await fetchDokployEnvironments(projectId);
+        console.log('[DokployPanel] Fetched environments:', result.environments);
+        setEnvironments(result.environments);
+      } catch (error) {
+        console.error("[DokployPanel] Failed to fetch environments", error);
+        setEnvironments([]);
+      } finally {
+        setLoadingEnvironments(false);
+      }
+    };
+
+    void fetchEnvironments();
+  }, [projectId]);
 
   const handleTestConnection = async () => {
     setTesting(true);
@@ -95,6 +124,7 @@ const DokployPanel = () => {
         baseUrl,
         authMethod,
         projectId,
+        environmentId,
         apiKey: apiKeyInput || undefined,
       };
 
@@ -197,6 +227,43 @@ const DokployPanel = () => {
                 : "Test connection first to load available projects"}
             </small>
           </label>
+
+          <label>
+            <span>Environment ID</span>
+            {environments.length > 0 ? (
+              <select
+                value={environmentId}
+                onChange={(e) => setEnvironmentId(e.target.value)}
+                disabled={loadingEnvironments}
+              >
+                <option value="">Select an environment...</option>
+                {environments.map((env) => (
+                  <option key={env.environmentId} value={env.environmentId}>
+                    {env.name} ({env.environmentId})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={environmentId}
+                onChange={(e) => setEnvironmentId(e.target.value)}
+                placeholder={
+                  loadingEnvironments
+                    ? "Loading environments..."
+                    : projectId
+                    ? "Select a project first to load environments"
+                    : "Test connection to load projects and environments"
+                }
+                disabled={loadingEnvironments}
+              />
+            )}
+            <small className="muted">
+              {environments.length > 0
+                ? "Select an environment from the list"
+                : "Required for creating new containers"}
+            </small>
+          </label>
         </div>
 
         <div className="deploy-actions">
@@ -210,7 +277,7 @@ const DokployPanel = () => {
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || !baseUrl || !projectId}
+            disabled={saving || !baseUrl || !projectId || !environmentId}
           >
             {saving ? "Saving…" : "Save Settings"}
           </button>

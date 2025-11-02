@@ -47,6 +47,7 @@ export type DeployConfig = {
   baseUrl: string;
   authMethod: DeployAuthMethod;
   projectId?: string;
+  environmentId?: string;
   applicationId?: string;
   serverId?: string;
   appName?: string;

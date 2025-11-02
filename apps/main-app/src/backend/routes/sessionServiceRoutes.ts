@@ -3,13 +3,13 @@ import database from "../db";
 import asyncHandler from "../middleware/asyncHandler";
 import { requireAuth } from "../middleware/auth";
 import {
-  createContainer,
-  getContainerStatus,
-  stopContainer,
-  startContainer,
-  deleteContainer,
-  getContainerLogs,
-} from "../services/containerManager";
+  createService,
+  getServiceStatus,
+  stopService,
+  startService,
+  deleteService,
+  getServiceLogs,
+} from "../services/serviceManager";
 import { exportAuthFilesAsEnvVars } from "../services/userAuthManager";
 import { decryptSecret } from "../utils/secretVault";
 
@@ -24,17 +24,33 @@ const getDeployConfigAndKey = (): {
   apiKey: string;
 } => {
   const deployConfigRow = database.getDeployConfig();
+  console.log('[DEPLOY-CONFIG] Row:', deployConfigRow);
+
   if (!deployConfigRow) {
     throw new Error("Deploy configuration not found. Please configure Dokploy in admin settings.");
   }
 
-  const apiKey = deployConfigRow.config.apiKey
-    ? decryptSecret(
-        deployConfigRow.config.apiKey.cipher,
-        deployConfigRow.config.apiKey.iv,
-        deployConfigRow.config.apiKey.tag,
-      )
-    : null;
+  console.log('[DEPLOY-CONFIG] Has cipher?', Boolean(deployConfigRow.apiKeyCipher));
+  console.log('[DEPLOY-CONFIG] Has IV?', Boolean(deployConfigRow.apiKeyIv));
+  console.log('[DEPLOY-CONFIG] Has tag?', Boolean(deployConfigRow.apiKeyTag));
+
+  let apiKey: string | null = null;
+
+  if (deployConfigRow.apiKeyCipher) {
+    // If we have IV and tag, use AES decryption
+    if (deployConfigRow.apiKeyIv && deployConfigRow.apiKeyTag) {
+      apiKey = decryptSecret(
+        deployConfigRow.apiKeyCipher,
+        deployConfigRow.apiKeyIv,
+        deployConfigRow.apiKeyTag,
+      );
+    } else {
+      // Fallback: base64 decode
+      apiKey = Buffer.from(deployConfigRow.apiKeyCipher, "base64").toString("utf8");
+    }
+  }
+
+  console.log('[DEPLOY-CONFIG] Decrypted API key?', Boolean(apiKey));
 
   if (!apiKey) {
     throw new Error("Dokploy API key not configured.");
@@ -57,9 +73,9 @@ const verifySessionOwnership = (sessionId: string, userId: string) => {
   return session;
 };
 
-// POST /api/sessions/:id/container/create
+// POST /api/sessions/:id/service/create
 router.post(
-  "/sessions/:id/container/create",
+  "/sessions/:id/service/create",
   asyncHandler(async (req, res) => {
     const sessionId = req.params.id;
     const userId = req.user!.id;
@@ -82,8 +98,8 @@ router.post(
     // Export auth files as env vars
     const authEnvVars = exportAuthFilesAsEnvVars(userId);
 
-    // Create container asynchronously
-    createContainer({
+    // Create service asynchronously
+    createService({
       sessionId,
       settings,
       userId,
@@ -91,25 +107,25 @@ router.post(
       apiKey,
       authEnvVars,
     }).catch((error) => {
-      console.error(`Failed to create container for session ${sessionId}:`, error);
+      console.error(`Failed to create service for session ${sessionId}:`, error);
     });
 
-    res.json({ message: "Container creation initiated" });
+    res.json({ message: "Service creation initiated" });
   }),
 );
 
-// GET /api/sessions/:id/container/status
+// GET /api/sessions/:id/service/status
 router.get(
-  "/sessions/:id/container/status",
+  "/sessions/:id/service/status",
   asyncHandler(async (req, res) => {
     const sessionId = req.params.id;
     const userId = req.user!.id;
 
     verifySessionOwnership(sessionId, userId);
 
-    const status = await getContainerStatus(sessionId);
+    const status = await getServiceStatus(sessionId);
     if (!status) {
-      res.status(404).json({ error: "Container not found" });
+      res.status(404).json({ error: "Service not found" });
       return;
     }
 
@@ -117,9 +133,9 @@ router.get(
   }),
 );
 
-// GET /api/sessions/:id/container/logs
+// GET /api/sessions/:id/service/logs
 router.get(
-  "/sessions/:id/container/logs",
+  "/sessions/:id/service/logs",
   asyncHandler(async (req, res) => {
     const sessionId = req.params.id;
     const userId = req.user!.id;
@@ -128,15 +144,15 @@ router.get(
 
     const { config, apiKey } = getDeployConfigAndKey();
 
-    const logs = await getContainerLogs(sessionId, config, apiKey);
+    const logs = await getServiceLogs(sessionId, config, apiKey);
 
     res.json({ logs });
   }),
 );
 
-// POST /api/sessions/:id/container/start
+// POST /api/sessions/:id/service/start
 router.post(
-  "/sessions/:id/container/start",
+  "/sessions/:id/service/start",
   asyncHandler(async (req, res) => {
     const sessionId = req.params.id;
     const userId = req.user!.id;
@@ -145,15 +161,15 @@ router.post(
 
     const { config, apiKey } = getDeployConfigAndKey();
 
-    await startContainer(sessionId, config, apiKey);
+    await startService(sessionId, config, apiKey);
 
-    res.json({ message: "Container started" });
+    res.json({ message: "Service started" });
   }),
 );
 
-// POST /api/sessions/:id/container/stop
+// POST /api/sessions/:id/service/stop
 router.post(
-  "/sessions/:id/container/stop",
+  "/sessions/:id/service/stop",
   asyncHandler(async (req, res) => {
     const sessionId = req.params.id;
     const userId = req.user!.id;
@@ -162,15 +178,15 @@ router.post(
 
     const { config, apiKey } = getDeployConfigAndKey();
 
-    await stopContainer(sessionId, config, apiKey);
+    await stopService(sessionId, config, apiKey);
 
-    res.json({ message: "Container stopped" });
+    res.json({ message: "Service stopped" });
   }),
 );
 
-// DELETE /api/sessions/:id/container
+// DELETE /api/sessions/:id/service
 router.delete(
-  "/sessions/:id/container",
+  "/sessions/:id/service",
   asyncHandler(async (req, res) => {
     const sessionId = req.params.id;
     const userId = req.user!.id;
@@ -179,7 +195,7 @@ router.delete(
 
     const { config, apiKey } = getDeployConfigAndKey();
 
-    await deleteContainer(sessionId, config, apiKey);
+    await deleteService(sessionId, config, apiKey);
 
     res.status(204).end();
   }),

@@ -1410,6 +1410,9 @@ class SQLiteDatabase implements IDatabase {
       config: parsed,
       updatedAt: row.updated_at,
       hasApiKey: Boolean(row.api_key_cipher),
+      apiKeyCipher: row.api_key_cipher,
+      apiKeyIv: row.api_key_iv,
+      apiKeyTag: row.api_key_tag,
     };
   }
 

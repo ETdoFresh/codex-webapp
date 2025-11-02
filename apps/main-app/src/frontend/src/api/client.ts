@@ -22,6 +22,7 @@ import type {
   DeployProjectsResponse,
   DeployTestResponse,
   DeployUploadResponse,
+  DeployEnvironmentsResponse,
   AuthUser,
   LoginRequest,
   LoginResponse,
@@ -695,6 +696,15 @@ export async function fetchDokployApplications(
     ? `/api/deploy/applications?projectId=${encodeURIComponent(projectId)}`
     : "/api/deploy/applications";
   const data = await request<DeployApplicationsResponse>(url);
+  return data;
+}
+
+export async function fetchDokployEnvironments(
+  projectId: string,
+): Promise<DeployEnvironmentsResponse> {
+  const data = await request<DeployEnvironmentsResponse>(
+    `/api/deploy/environments?projectId=${encodeURIComponent(projectId)}`,
+  );
   return data;
 }
 

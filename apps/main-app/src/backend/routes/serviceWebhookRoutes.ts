@@ -29,9 +29,9 @@ const webhookMessageSchema = z.object({
 });
 
 /**
- * Middleware to validate container session token
+ * Middleware to validate service session token
  */
-const validateContainerToken = asyncHandler(async (req, res, next) => {
+const validateServiceToken = asyncHandler(async (req, res, next) => {
   const token = extractTokenFromHeader(req.headers.authorization);
 
   if (!token) {
@@ -49,7 +49,7 @@ const validateContainerToken = asyncHandler(async (req, res, next) => {
     }
 
     // Attach validated payload to request
-    req.containerAuth = payload;
+    req.serviceAuth = payload;
     next();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid token";
@@ -58,12 +58,12 @@ const validateContainerToken = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * POST /api/container-webhooks/:sessionId/message
- * Container posts a completed message to be stored in the database
+ * POST /api/service-webhooks/:sessionId/message
+ * Service posts a completed message to be stored in the database
  */
 router.post(
-  "/container-webhooks/:sessionId/message",
-  validateContainerToken,
+  "/service-webhooks/:sessionId/message",
+  validateServiceToken,
   asyncHandler(async (req, res) => {
     const sessionId = req.params.sessionId;
     const payload: WebhookMessagePayload = webhookMessageSchema.parse(req.body);
@@ -75,7 +75,7 @@ router.post(
       return;
     }
 
-    if (session.userId !== req.containerAuth!.userId) {
+    if (session.userId !== req.serviceAuth!.userId) {
       res.status(403).json({ error: "Unauthorized" });
       return;
     }
@@ -116,12 +116,12 @@ router.post(
 );
 
 /**
- * GET /api/container-webhooks/:sessionId/messages
- * Container requests message history for the session
+ * GET /api/service-webhooks/:sessionId/messages
+ * Service requests message history for the session
  */
 router.get(
-  "/container-webhooks/:sessionId/messages",
-  validateContainerToken,
+  "/service-webhooks/:sessionId/messages",
+  validateServiceToken,
   asyncHandler(async (req, res) => {
     const sessionId = req.params.sessionId;
 
@@ -132,7 +132,7 @@ router.get(
       return;
     }
 
-    if (session.userId !== req.containerAuth!.userId) {
+    if (session.userId !== req.serviceAuth!.userId) {
       res.status(403).json({ error: "Unauthorized" });
       return;
     }
@@ -145,11 +145,11 @@ router.get(
   }),
 );
 
-// Extend Express Request type to include containerAuth
+// Extend Express Request type to include serviceAuth
 declare global {
   namespace Express {
     interface Request {
-      containerAuth?: {
+      serviceAuth?: {
         sessionId: string;
         userId: string;
       };

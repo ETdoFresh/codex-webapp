@@ -5,6 +5,7 @@ import SessionList from "./components/SessionList";
 import ContainerIframe from "./components/ContainerIframe";
 import AdminPanel from "./components/AdminPanel";
 import DokployPanel from "./components/DokployPanel";
+import NewSessionModal from "./components/NewSessionModal";
 import { createSession, deleteSession, fetchSessions } from "./api/client";
 import type { Session } from "@codex-webapp/shared";
 
@@ -25,6 +26,7 @@ function AppSimplified() {
   const [viewMode, setViewMode] = useState<"container" | "admin" | "dokploy">("container");
   const [loading, setLoading] = useState(true);
   const [containerStatuses, setContainerStatuses] = useState<Record<string, any>>({});
+  const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
   const tagline = useMemo(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)], []);
 
   const activeSession = useMemo(
@@ -88,9 +90,19 @@ function AppSimplified() {
     loadContainerStatuses();
   }, [user, sessions]);
 
-  const handleNewSession = useCallback(async () => {
+  const handleNewSession = useCallback(() => {
+    setIsNewSessionModalOpen(true);
+  }, []);
+
+  const handleCreateSession = useCallback(async (data: {
+    title?: string;
+    githubRepo?: string;
+    gitBranch?: string;
+    dockerfilePath?: string;
+    customEnvVars?: Record<string, string>;
+  }) => {
     try {
-      const newSession = await createSession({ title: "New Session" });
+      const newSession = await createSession(data);
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(newSession.id);
 
@@ -100,7 +112,7 @@ function AppSimplified() {
       });
     } catch (error) {
       console.error("Failed to create session:", error);
-      alert("Failed to create session");
+      throw error; // Re-throw so modal can show error
     }
   }, []);
 
@@ -241,6 +253,13 @@ function AppSimplified() {
           )}
         </div>
       </div>
+
+      {/* New Session Modal */}
+      <NewSessionModal
+        isOpen={isNewSessionModalOpen}
+        onClose={() => setIsNewSessionModalOpen(false)}
+        onCreate={handleCreateSession}
+      />
     </div>
   );
 }

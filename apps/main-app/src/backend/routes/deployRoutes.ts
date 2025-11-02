@@ -65,6 +65,7 @@ const configSchema = z.object({
   baseUrl: z.string().trim().min(1),
   authMethod: z.enum(["x-api-key", "authorization"]),
   projectId: z.string().trim().min(1).optional(),
+  environmentId: z.string().trim().min(1).optional(),
   serverId: z.string().trim().min(1).optional(),
   applicationId: z.string().trim().min(1).optional(),
   appName: z.string().trim().min(1).optional(),
@@ -147,6 +148,7 @@ router.put("/deploy/config", (req: Request, res: Response) => {
     baseUrl: body.baseUrl,
     authMethod: body.authMethod,
     projectId: body.projectId,
+    environmentId: body.environmentId,
     serverId: body.serverId,
     applicationId: body.applicationId ?? current?.config.applicationId,
     appName: body.appName,
@@ -319,6 +321,65 @@ router.get("/deploy/applications", async (req: Request, res: Response) => {
     console.error("Failed to fetch Dokploy applications", error);
     res.status(400).json({
       error: error instanceof Error ? error.message : "Unable to fetch applications.",
+    });
+  }
+});
+
+router.get("/deploy/environments", async (req: Request, res: Response) => {
+  try {
+    const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+    console.log('[DEPLOY] Fetching environments for projectId:', projectId);
+
+    if (!projectId) {
+      res.status(400).json({ error: "projectId query parameter is required." });
+      return;
+    }
+
+    const stored = loadConfigOrThrow();
+    const apiKey = database.getDeployApiKey();
+    if (!apiKey) {
+      throw new Error("Dokploy API key is not configured.");
+    }
+
+    const client = createDokployClient(stored.config, apiKey);
+
+    // Fetch all projects and find the matching one
+    const projects = await client.request<any[]>({
+      method: "GET",
+      path: "/project.all",
+    });
+
+    console.log('[DEPLOY] All projects response:', JSON.stringify(projects, null, 2));
+
+    // Find the specific project
+    const project = Array.isArray(projects)
+      ? projects.find((p: any) => (p.projectId || p.id) === projectId)
+      : null;
+
+    if (!project) {
+      console.log('[DEPLOY] Project not found:', projectId);
+      res.json({ environments: [] });
+      return;
+    }
+
+    console.log('[DEPLOY] Found project:', JSON.stringify(project, null, 2));
+
+    // Extract environments from the project
+    const environments = project.environments || [];
+
+    const formattedEnvironments = Array.isArray(environments)
+      ? environments.map((env: any) => ({
+          environmentId: env.environmentId || env.id || "",
+          name: env.name || env.environmentId || env.id || "Unnamed Environment",
+        }))
+      : [];
+
+    console.log('[DEPLOY] Formatted environments:', formattedEnvironments);
+    res.json({ environments: formattedEnvironments });
+  } catch (error) {
+    console.error("[DEPLOY] Failed to fetch Dokploy environments", error);
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Unable to fetch environments.",
     });
   }
 });
