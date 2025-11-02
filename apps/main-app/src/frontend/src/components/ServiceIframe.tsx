@@ -8,7 +8,7 @@ type ServiceIframeProps = {
 
 const ServiceIframe = ({ serviceUrl, sessionId }: ServiceIframeProps) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("ready"); // Start as ready
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const sendToService = useCallback((message: MainToServiceMessage) => {

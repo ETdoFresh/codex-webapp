@@ -66,9 +66,11 @@ function AppSimplified() {
     };
   }, [user]);
 
-  // Load service statuses
+  // Load service statuses with polling for non-ready services
   useEffect(() => {
     if (!user || sessions.length === 0) return;
+
+    let cancelled = false;
 
     async function loadServiceStatuses() {
       const statuses: Record<string, any> = {};
@@ -85,10 +87,25 @@ function AppSimplified() {
         }
       }
 
-      setServiceStatuses(statuses);
+      if (!cancelled) {
+        setServiceStatuses(statuses);
+      }
+
+      // Poll for status updates if any service is not running
+      const hasNonRunningServices = Object.values(statuses).some(
+        (s) => s?.status && s.status !== "running"
+      );
+
+      if (hasNonRunningServices && !cancelled) {
+        setTimeout(loadServiceStatuses, 3000); // Poll every 3 seconds
+      }
     }
 
     loadServiceStatuses();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, sessions]);
 
   const handleNewSession = useCallback(() => {
@@ -168,6 +185,22 @@ function AppSimplified() {
 
   const serviceStatus = activeSessionId ? serviceStatuses[activeSessionId] : null;
   const serviceUrl = serviceStatus?.url;
+  const isServiceReady = serviceStatus?.status === "running" && serviceUrl;
+
+  const getStatusMessage = (status?: string) => {
+    switch (status) {
+      case "creating":
+        return "Creating service container...";
+      case "running":
+        return "Service is ready!";
+      case "stopped":
+        return "Service is stopped";
+      case "error":
+        return "Service encountered an error";
+      default:
+        return "Initializing...";
+    }
+  };
 
   return (
     <div className="app-layout">
@@ -205,18 +238,18 @@ function AppSimplified() {
           <button
             type="button"
             className="ghost-button"
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-          >
-            {theme === "dark" ? "☀️" : "🌙"}
-          </button>
-          <button
-            type="button"
-            className="ghost-button"
             onClick={handleLogout}
             aria-label="Logout"
           >
             Logout
+          </button>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? "☀️" : "🌙"}
           </button>
         </div>
       </header>
@@ -250,13 +283,30 @@ function AppSimplified() {
             <div className="message-panel">
               <GitHubConnectionPanel />
             </div>
-          ) : activeSession && serviceUrl ? (
+          ) : activeSession && isServiceReady ? (
             <ServiceIframe serviceUrl={serviceUrl} sessionId={activeSession.id} />
           ) : activeSession ? (
             <div className="service-loading">
-              <h3>Service Starting...</h3>
+              <h3>
+                {serviceStatus?.status === "creating" && "⏳ "}
+                {serviceStatus?.status === "error" && "❌ "}
+                {getStatusMessage(serviceStatus?.status)}
+              </h3>
               <p>Your session service is being provisioned.</p>
-              <p>Status: {serviceStatus?.status || "unknown"}</p>
+              <div style={{ marginTop: "1rem", fontSize: "0.9rem", opacity: 0.8 }}>
+                <p><strong>Status:</strong> {serviceStatus?.status || "unknown"}</p>
+                {serviceUrl && <p><strong>URL:</strong> {serviceUrl}</p>}
+                {serviceStatus?.error && (
+                  <p style={{ color: "var(--color-error-text)", marginTop: "0.5rem" }}>
+                    <strong>Error:</strong> {serviceStatus.error}
+                  </p>
+                )}
+              </div>
+              {serviceStatus?.status === "creating" && (
+                <p style={{ marginTop: "1rem", fontStyle: "italic" }}>
+                  Please wait while we set up your environment...
+                </p>
+              )}
             </div>
           ) : (
             <div className="service-loading">
