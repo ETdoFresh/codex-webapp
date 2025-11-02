@@ -2411,14 +2411,6 @@ function AuthenticatedApp() {
             </button>
             <button
               type="button"
-              className={`ghost-button session-toggle-button${isSessionView ? " active" : ""}`}
-              onClick={() => setChatViewMode(isSessionView ? "formatted" : "session")}
-              aria-pressed={isSessionView}
-            >
-              New Session
-            </button>
-            <button
-              type="button"
               className="ghost-button logout-button"
               onClick={() => void handleLogout()}
             >
