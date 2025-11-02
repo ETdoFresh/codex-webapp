@@ -28,6 +28,9 @@ export type MessageResponse = {
   createdAt: string;
   attachments: AttachmentResponse[];
   items: ThreadItem[];
+  responderProvider: string | null;
+  responderModel: string | null;
+  responderReasoningEffort: string | null;
 };
 
 export type IncomingAttachment = {
@@ -64,5 +67,8 @@ export const messageToResponse = (message: MessageWithAttachments): MessageRespo
   content: message.content,
   createdAt: message.createdAt,
   attachments: message.attachments.map(attachmentToResponse),
-  items: message.items ?? []
+  items: message.items ?? [],
+  responderProvider: message.responderProvider ?? null,
+  responderModel: message.responderModel ?? null,
+  responderReasoningEffort: message.responderReasoningEffort ?? null
 });

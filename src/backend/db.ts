@@ -103,12 +103,24 @@ const migrations: string[] = [
     role TEXT NOT NULL CHECK(role IN ('system', 'user', 'assistant')),
     content TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    responder_provider TEXT,
+    responder_model TEXT,
+    responder_reasoning_effort TEXT,
     FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
   )
 `,
   `
   CREATE INDEX IF NOT EXISTS idx_messages_session_created_at
     ON messages(session_id, created_at)
+`,
+  `
+  ALTER TABLE messages ADD COLUMN responder_provider TEXT
+`,
+  `
+  ALTER TABLE messages ADD COLUMN responder_model TEXT
+`,
+  `
+  ALTER TABLE messages ADD COLUMN responder_reasoning_effort TEXT
 `,
   `
   CREATE TABLE IF NOT EXISTS message_attachments (
@@ -325,6 +337,9 @@ class SQLiteDatabase implements IDatabase {
     role: string;
     content: string;
     createdAt: string;
+    responderProvider: string | null;
+    responderModel: string | null;
+    responderReasoningEffort: string | null;
   }>;
   private readonly insertAttachmentStmt: Statement<{
     id: string;
@@ -585,8 +600,26 @@ class SQLiteDatabase implements IDatabase {
       DELETE FROM sessions WHERE id = @id
     `);
     this.insertMessageStmt = this.db.prepare(`
-      INSERT INTO messages (id, session_id, role, content, created_at)
-      VALUES (@id, @sessionId, @role, @content, @createdAt)
+      INSERT INTO messages (
+        id,
+        session_id,
+        role,
+        content,
+        created_at,
+        responder_provider,
+        responder_model,
+        responder_reasoning_effort
+      )
+      VALUES (
+        @id,
+        @sessionId,
+        @role,
+        @content,
+        @createdAt,
+        @responderProvider,
+        @responderModel,
+        @responderReasoningEffort
+      )
     `);
     this.insertAttachmentStmt = this.db.prepare(`
       INSERT INTO message_attachments (
@@ -673,7 +706,15 @@ class SQLiteDatabase implements IDatabase {
       WHERE id = @id
     `);
     this.listMessagesStmt = this.db.prepare(`
-      SELECT id, session_id as sessionId, role, content, created_at as createdAt
+      SELECT
+        id,
+        session_id as sessionId,
+        role,
+        content,
+        created_at as createdAt,
+        responder_provider as responderProvider,
+        responder_model as responderModel,
+        responder_reasoning_effort as responderReasoningEffort
       FROM messages
       WHERE session_id = @sessionId
       ORDER BY created_at ASC
@@ -1885,14 +1926,26 @@ class SQLiteDatabase implements IDatabase {
     content: string,
     attachments: NewAttachmentInput[] = [],
     items: ThreadItem[] = [],
+    responder?: {
+      provider?: string | null;
+      model?: string | null;
+      reasoningEffort?: string | null;
+    },
   ): MessageWithAttachments {
     const createdAt = new Date().toISOString();
+    const responderProvider = responder?.provider ?? null;
+    const responderModel = responder?.model ?? null;
+    const responderReasoningEffort = responder?.reasoningEffort ?? null;
+
     const message: MessageRecord = {
       id: uuid(),
       sessionId,
       role,
       content,
       createdAt,
+      responderProvider,
+      responderModel,
+      responderReasoningEffort,
     };
 
     this.insertMessageStmt.run({
@@ -1901,6 +1954,9 @@ class SQLiteDatabase implements IDatabase {
       role: message.role,
       content: message.content,
       createdAt: message.createdAt,
+      responderProvider,
+      responderModel,
+      responderReasoningEffort,
     });
 
     const savedAttachments: AttachmentRecord[] = [];

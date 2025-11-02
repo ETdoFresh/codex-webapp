@@ -239,6 +239,9 @@ const normalizeMessage = (message: Message): Message => ({
   ...message,
   attachments: message.attachments ?? [],
   items: message.items ?? [],
+  responderProvider: message.responderProvider ?? null,
+  responderModel: message.responderModel ?? null,
+  responderReasoningEffort: message.responderReasoningEffort ?? null,
 });
 
 const normalizeReasoningEffort = (
@@ -851,4 +854,3 @@ export async function disconnectGitHub(): Promise<{ success: boolean }> {
     method: "DELETE",
   });
 }
-

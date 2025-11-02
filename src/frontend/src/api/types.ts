@@ -55,6 +55,9 @@ export type Message = {
   createdAt: string;
   attachments: Attachment[];
   items?: TurnItem[];
+  responderProvider?: string | null;
+  responderModel?: string | null;
+  responderReasoningEffort?: string | null;
 };
 
 export type Usage = {

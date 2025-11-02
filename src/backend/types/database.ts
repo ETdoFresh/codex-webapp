@@ -18,6 +18,9 @@ export type MessageRecord = {
   role: 'system' | 'user' | 'assistant';
   content: string;
   createdAt: string;
+  responderProvider: string | null;
+  responderModel: string | null;
+  responderReasoningEffort: string | null;
 };
 
 export type AttachmentRecord = {

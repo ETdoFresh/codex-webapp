@@ -51,6 +51,7 @@ import SessionSettingsModal, {
 } from "./components/SessionSettingsModal";
 
 const DEFAULT_SESSION_TITLE = "New Session";
+const DEFAULT_ASSISTANT_LABEL = "Codex";
 const THEME_STORAGE_KEY = "codex:theme";
 const LAST_PROVIDER_STORAGE_KEY = "codex:last-provider";
 const LAST_MODEL_STORAGE_KEY = "codex:last-model";
@@ -1202,6 +1203,31 @@ function AuthenticatedApp() {
   const renderMessage = (message: Message, detailed: boolean) => {
     const attachments = message.attachments ?? [];
     const messageItems = message.items ?? [];
+    const assistantLabel =
+      (() => {
+        const segments: string[] = [];
+
+        const provider = message.responderProvider?.trim();
+        if (provider) {
+          segments.push(provider);
+        }
+
+        const model = message.responderModel?.trim();
+        if (model) {
+          segments.push(model);
+        }
+
+        const effort = message.responderReasoningEffort?.trim();
+        if (effort) {
+          segments.push(effort[0]?.toUpperCase() + effort.slice(1));
+        }
+
+        if (segments.length > 0) {
+          return segments.join(" ");
+        }
+
+        return DEFAULT_ASSISTANT_LABEL;
+      })();
 
     type FlatItemEntry = {
       key: string;
@@ -1783,9 +1809,9 @@ function AuthenticatedApp() {
     const placeholderText =
       message.role === "assistant"
         ? isStreamingAssistant
-          ? streamingPreview ?? "Codex is thinking…"
+          ? streamingPreview ?? `${assistantLabel} is thinking…`
           : messageItems.length > 0
-            ? "Codex responded with structured output."
+            ? `${assistantLabel} responded with structured output.`
             : "No response yet."
         : message.role === "user"
           ? "Empty message."
@@ -1796,7 +1822,7 @@ function AuthenticatedApp() {
         <header className="message-meta">
           <span className="message-role">
             {message.role === "assistant"
-              ? "Codex"
+              ? assistantLabel
               : message.role === "user"
                 ? "You"
                 : "System"}

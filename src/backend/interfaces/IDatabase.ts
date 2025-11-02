@@ -35,6 +35,11 @@ interface IDatabase {
     content: string,
     attachments?: NewAttachmentInput[],
     items?: ThreadItem[],
+    responder?: {
+      provider?: string | null;
+      model?: string | null;
+      reasoningEffort?: string | null;
+    },
   ): MessageWithAttachments;
   listMessages(sessionId: string): MessageWithAttachments[];
   getDatabasePath(): string;

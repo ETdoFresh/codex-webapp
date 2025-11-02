@@ -7,7 +7,7 @@ import { z } from "zod";
 import database from "../db";
 import { codexManager } from "../codexManager";
 import { claudeManager } from "../claudeManager";
-import { getCodexMeta } from "../settings";
+import { getCodexMeta, type CodexProvider } from "../settings";
 import {
   allowedImageMimeTypes,
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -27,9 +27,8 @@ import { synchronizeUserAuthFiles } from "./userAuthManager";
 import { generateCommitMessage } from "./commitMessageService";
 import { commitAndPushToGitHub } from "./gitOperationsService";
 
-function getAgentManager(): IAgent {
-  const meta = getCodexMeta();
-  switch (meta.provider) {
+function getAgentManager(provider: CodexProvider): IAgent {
+  switch (provider) {
     case 'CodexSDK':
       return codexManager;
     case 'ClaudeCodeSDK':
@@ -147,6 +146,13 @@ export async function handleSessionMessageRequest(
     storedContent,
     savedAttachmentInputs,
   );
+  const turnMeta = getCodexMeta();
+  const agentManager = getAgentManager(turnMeta.provider);
+  const responderInfo = {
+    provider: turnMeta.provider,
+    model: turnMeta.model,
+    reasoningEffort: turnMeta.reasoningEffort,
+  };
 
   const workspaceDirectory = ensureWorkspaceDirectory(session.id);
   session.workspacePath = workspaceDirectory;
@@ -299,6 +305,9 @@ export async function handleSessionMessageRequest(
       createdAt: assistantCreatedAt,
       attachments: [],
       items: snapshotItems(),
+      responderProvider: responderInfo.provider,
+      responderModel: responderInfo.model,
+      responderReasoningEffort: responderInfo.reasoningEffort,
     };
     writeEvent({ type: "assistant_message_snapshot", message: snapshot });
   };
@@ -323,16 +332,19 @@ export async function handleSessionMessageRequest(
   sendSnapshot();
 
   try {
-    const manager = getAgentManager();
-  if (!session.userId) {
-    res.status(500).json({ error: "Session missing owner" });
-    return;
-  }
+    if (!session.userId) {
+      res.status(500).json({ error: "Session missing owner" });
+      return;
+    }
 
-  const authContext = synchronizeUserAuthFiles(session.userId);
-  const { events } = await manager.runTurnStreamed(session, codexInput, {
-    env: authContext.env,
-  });
+    const authContext = synchronizeUserAuthFiles(session.userId);
+    const { events } = await agentManager.runTurnStreamed(
+      session,
+      codexInput,
+      {
+        env: authContext.env,
+      },
+    );
     const iterator = events[Symbol.asyncIterator]();
 
     stopIterator = () => {
@@ -483,8 +495,7 @@ export async function handleSessionMessageRequest(
     assistantText.trim().length > 0 || completedItems.length > 0;
 
   if (streamError && !hasAssistantContent) {
-    const manager = getAgentManager();
-    manager.forgetSession(session.id);
+    agentManager.forgetSession(session.id);
     if (session.codexThreadId) {
       database.updateSessionThreadId(session.id, null);
       session.codexThreadId = null;
@@ -507,6 +518,7 @@ export async function handleSessionMessageRequest(
     assistantText,
     [],
     completedItems,
+    responderInfo,
   );
   const latestSession = database.getSession(session.id) ?? session;
 
@@ -551,8 +563,7 @@ export async function handleSessionMessageRequest(
   }
 
   if (streamError) {
-    const manager = getAgentManager();
-    manager.forgetSession(session.id);
+    agentManager.forgetSession(session.id);
     if (session.codexThreadId) {
       database.updateSessionThreadId(session.id, null);
       session.codexThreadId = null;
