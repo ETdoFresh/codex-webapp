@@ -57,6 +57,78 @@ const LAST_PROVIDER_STORAGE_KEY = "codex:last-provider";
 const LAST_MODEL_STORAGE_KEY = "codex:last-model";
 const LAST_REASONING_STORAGE_KEY = "codex:last-reasoning";
 
+const TAGLINES = [
+  "webedt - (wĕb ĕd′-ĭt)",
+  "webedt - There's not i in webedt",
+  "webedt - It edits!",
+  "webedt - From that time where we took off the last vowels",
+  "webedt - Edit the web, drop the vowels.",
+  "webedt - Type less. Ship edits.",
+  "webedt - Vowels optional, edits mandatory.",
+  "webedt - Keep calm and edit on.",
+  "webedt - Much wow. Many edits.",
+  "webedt - I can haz edits?",
+  "webedt - This is the way (to edit).",
+  "webedt - With great power comes great edits.",
+  "webedt - Edit long and prosper.",
+  "webedt - The cake is a lie; the edits are real.",
+  "webedt - 404: 'i' not found; edits delivered.",
+  "webedt - Come with me if you want to edit.",
+  "webedt - Never gonna give edits up.",
+  "webedt - Ship edits, and chew bubble gum—and we're all out of gum.",
+  "webedt - May the source be with your edits.",
+  "webedt - It's dangerous to go alone—take this editor.",
+  "webedt - This is edit.",
+  "webedt - One does not simply skip edit.",
+  "webedt - A wild edit appears!",
+  "webedt - Press F to edit.",
+  "webedt - Achievement unlocked: edit.",
+  "webedt - Take the red pill—see the edit.",
+  "webedt - You shall not pass—until you edit.",
+  "webedt - All your edit are belong to us.",
+  "webedt - Ha-dou-ked-it",
+  "webedt - Kamehame… edit!",
+  "webedt - Winter is coming—do the edit.",
+  "webedt - 404: 'i' not found; do edit.",
+  "webedt - Edit or do not—there is no try.",
+  "webedt - I am once again asking for your edit.",
+  "webedt - By the power of Grayskull—edit!",
+  "webedt - It's-a me… edit!",
+  "webedt - You're finally awake—time to edit.",
+  "webedt - Took an arrow to the knee—still did edit.",
+  "webedt - Why so serious? Do edit.",
+  "webedt - You had me at edit.",
+  "webedt - Expecto… edit-toe.",
+  "webedt - I'll be back—with edits.",
+  "webedt - Wubba lubba dub dub—edit.",
+  "webedt - We're gonna need a bigger… edit.",
+  "webedt - So you're telling me there's a chance… for edit.",
+  "webedt - I volunteer as tribute—to edit.",
+  "webedt - The spice must flow—the edit must too.",
+  "webedt - You either die a noob or live long enough to edit.",
+  "webedt - Say \"edit\" again—I dare you.",
+  "webedt - Hello there—general… edit.",
+  "webedt - Keep your secrets—share the edit.",
+  "webedt - Look at me. I am the edit now.",
+  "webedt - It's over 9000—edits!",
+  "webedt - You had one job: edit.",
+  "webedt - Ermahgerd—nice edit.",
+  "webedt - The floor is lava—jump to edit.",
+  "webedt - We live in a society—so we edit.",
+  "webedt - Do you even edit?",
+  "webedt - Big if true—bigger if edit.",
+  "webedt - I made this—edit made it better.",
+  "webedt - Leeroy Jenkins—into the edit!",
+  "webedt - Say hello to my little edit.",
+  "webedt - To infinity—and the editor.",
+  "webedt - Roads? Where we're going, we only edit.",
+  "webedt - Bop it. Twist it. Edit it.",
+  "webedt - Smash that like—then edit.",
+  "webedt - The real treasure was the edit we made.",
+  "webedt - Some men just want to watch the world edit.",
+  "webedt - The algorithm demands… edits.",
+];
+
 const FALLBACK_MODELS = ["gpt-5-codex", "gpt-5"];
 const FALLBACK_PROVIDERS: AppMeta["provider"][] = ["CodexSDK"];
 const FALLBACK_REASONING: AppMeta["reasoningEffort"][] = [
@@ -296,6 +368,7 @@ function AuthenticatedApp() {
   const { user, logout } = useAuth();
   const health = useHealthStatus();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const tagline = useMemo(() => TAGLINES[Math.floor(Math.random() * TAGLINES.length)], []);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
@@ -2364,7 +2437,7 @@ function AuthenticatedApp() {
     <div className="app">
       <header className="app-header">
         <div>
-          <h1>webedt (wĕb ĕd′-ĭt)</h1>
+          <h1>{tagline}</h1>
           <p className="muted">
             Multi-session workspace with persistent history and full-stack tools
           </p>
