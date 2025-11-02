@@ -35,7 +35,9 @@
       "Bash(node -e:*)",
       "Bash(chmod:*)",
       "mcp__chrome-devtools__get_network_request",
-      "Bash(/Users/etgarcia/temp/codex-webapp/node_modules/@openai/codex-sdk/vendor/aarch64-apple-darwin/codex/codex exec --experimental-json)"
+      "Bash(/Users/etgarcia/temp/codex-webapp/node_modules/@openai/codex-sdk/vendor/aarch64-apple-darwin/codex/codex exec --experimental-json)",
+      "Bash(node test-auth-fix.js)",
+      "Bash(node test-auth-fix.cjs)"
     ],
     "deny": [],
     "ask": []
