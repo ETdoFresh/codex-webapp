@@ -67,6 +67,7 @@ const configSchema = z.object({
   projectId: z.string().trim().min(1).optional(),
   environmentId: z.string().trim().min(1).optional(),
   serverId: z.string().trim().min(1).optional(),
+  githubId: z.string().trim().min(1).optional(),
   applicationId: z.string().trim().min(1).optional(),
   appName: z.string().trim().min(1).optional(),
   domain: z.string().trim().optional(),
@@ -150,6 +151,7 @@ router.put("/deploy/config", (req: Request, res: Response) => {
     projectId: body.projectId,
     environmentId: body.environmentId,
     serverId: body.serverId,
+    githubId: body.githubId,
     applicationId: body.applicationId ?? current?.config.applicationId,
     appName: body.appName,
     domain: body.domain,
@@ -380,6 +382,39 @@ router.get("/deploy/environments", async (req: Request, res: Response) => {
     console.error("[DEPLOY] Failed to fetch Dokploy environments", error);
     res.status(400).json({
       error: error instanceof Error ? error.message : "Unable to fetch environments.",
+    });
+  }
+});
+
+router.get("/deploy/github-providers", async (_req: Request, res: Response) => {
+  try {
+    const stored = loadConfigOrThrow();
+    const apiKey = database.getDeployApiKey();
+    if (!apiKey) {
+      throw new Error("Dokploy API key is not configured.");
+    }
+
+    const client = createDokployClient(stored.config, apiKey);
+
+    // Try to fetch GitHub providers
+    const providers = await client.request<any[]>({
+      method: "GET",
+      path: "/github.all",
+    });
+
+    const formattedProviders = Array.isArray(providers)
+      ? providers.map((provider: any) => ({
+          githubId: provider.githubId || provider.id || "",
+          name: provider.name || provider.githubAppName || "Unnamed Provider",
+          githubAppName: provider.githubAppName || "",
+        }))
+      : [];
+
+    res.json({ providers: formattedProviders });
+  } catch (error) {
+    console.error("[DEPLOY] Failed to fetch GitHub providers", error);
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Unable to fetch GitHub providers.",
     });
   }
 });

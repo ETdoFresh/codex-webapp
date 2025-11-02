@@ -50,6 +50,7 @@ export type DeployConfig = {
   environmentId?: string;
   applicationId?: string;
   serverId?: string;
+  githubId?: string;
   appName?: string;
   domain?: string;
   port?: number;

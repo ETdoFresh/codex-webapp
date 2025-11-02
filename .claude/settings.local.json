@@ -41,7 +41,9 @@
       "Bash(git add src/backend/codexManager.ts)",
       "Bash(python3:*)",
       "Bash(ps:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "mcp__chrome-devtools__get_console_message",
+      "WebFetch(domain:docs.dokploy.com)"
     ],
     "deny": [],
     "ask": []

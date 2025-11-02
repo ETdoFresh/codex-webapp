@@ -19,6 +19,7 @@ const DokployPanel = () => {
   const [apiKeyInput, setApiKeyInput] = useState<string>("");
   const [projectId, setProjectId] = useState<string>("");
   const [environmentId, setEnvironmentId] = useState<string>("");
+  const [githubId, setGithubId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -36,6 +37,7 @@ const DokployPanel = () => {
       setAuthMethod(data.authMethod || "x-api-key");
       setProjectId(data.projectId || "");
       setEnvironmentId(data.environmentId || "");
+      setGithubId(data.githubId || "");
       setApiKeyInput("");
       setStatus(null);
     } catch (error) {
@@ -125,6 +127,7 @@ const DokployPanel = () => {
         authMethod,
         projectId,
         environmentId,
+        githubId: githubId || undefined,
         apiKey: apiKeyInput || undefined,
       };
 
@@ -262,6 +265,19 @@ const DokployPanel = () => {
               {environments.length > 0
                 ? "Select an environment from the list"
                 : "Required for creating new services"}
+            </small>
+          </label>
+
+          <label>
+            <span>GitHub App ID</span>
+            <input
+              type="text"
+              value={githubId}
+              onChange={(e) => setGithubId(e.target.value)}
+              placeholder="Dokploy-2025-08-22-23l29u"
+            />
+            <small className="muted">
+              GitHub App ID from Dokploy (Settings → Git → Github). Required for GitHub repository deployments.
             </small>
           </label>
         </div>

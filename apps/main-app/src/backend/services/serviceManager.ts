@@ -139,12 +139,24 @@ export async function createService(
 
     // Configure build settings if GitHub repo is provided
     if (settings.githubRepo) {
+      // Extract owner and repository name from GitHub URL
+      // Format: https://github.com/owner/repo or git@github.com:owner/repo.git
+      const githubUrlMatch = settings.githubRepo.match(/github\.com[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
+      const owner = githubUrlMatch?.[1];
+      const repository = githubUrlMatch?.[2];
+
+      if (!owner || !repository) {
+        throw new Error(`Invalid GitHub repository URL format: ${settings.githubRepo}`);
+      }
+
       await client.request({
         method: "POST",
         path: "/application.saveGithubProvider",
         body: {
           applicationId,
-          repository: settings.githubRepo,
+          owner,
+          repository,
+          githubId: globalConfig.githubId || null,
           branch: buildSettings.branch || "main",
           buildPath: buildSettings.buildPath || "./",
         },
@@ -157,7 +169,9 @@ export async function createService(
         body: {
           applicationId,
           buildType: buildSettings.buildType || "nixpacks",
-          dockerfile: settings.dockerfilePath || undefined,
+          dockerfile: settings.dockerfilePath || "",
+          dockerContextPath: "",
+          dockerBuildStage: "",
         },
       });
     }
