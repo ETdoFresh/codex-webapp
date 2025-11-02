@@ -5,6 +5,7 @@ import SessionList from "./components/SessionList";
 import ServiceIframe from "./components/ServiceIframe";
 import AdminPanel from "./components/AdminPanel";
 import DokployPanel from "./components/DokployPanel";
+import GitHubConnectionPanel from "./components/GitHubConnectionPanel";
 import NewSessionModal from "./components/NewSessionModal";
 import { createSession, deleteSession, fetchSessions } from "./api/client";
 import type { Session } from "@codex-webapp/shared";
@@ -23,7 +24,7 @@ function AppSimplified() {
   const [theme, setTheme] = useState<Theme>("dark");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"service" | "admin" | "dokploy">("service");
+  const [viewMode, setViewMode] = useState<"service" | "admin" | "dokploy" | "github">("service");
   const [loading, setLoading] = useState(true);
   const [serviceStatuses, setServiceStatuses] = useState<Record<string, any>>({});
   const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
@@ -180,6 +181,14 @@ function AppSimplified() {
           <button
             type="button"
             className="ghost-button"
+            onClick={() => setViewMode("github")}
+            aria-label="GitHub"
+          >
+            GitHub
+          </button>
+          <button
+            type="button"
+            className="ghost-button"
             onClick={() => setViewMode("admin")}
             aria-label="Admin"
           >
@@ -236,6 +245,10 @@ function AppSimplified() {
           ) : viewMode === "dokploy" ? (
             <div className="message-panel">
               <DokployPanel />
+            </div>
+          ) : viewMode === "github" ? (
+            <div className="message-panel">
+              <GitHubConnectionPanel />
             </div>
           ) : activeSession && serviceUrl ? (
             <ServiceIframe serviceUrl={serviceUrl} sessionId={activeSession.id} />
