@@ -1,49 +1,22 @@
 {
-  "name": "codex-webapp",
-  "version": "0.2.0",
+  "name": "codex-webapp-monorepo",
+  "version": "0.3.0",
   "private": true,
-  "type": "module",
+  "workspaces": [
+    "apps/main-app",
+    "apps/container-app",
+    "apps/shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@codex-webapp/main-app",
+    "dev:main": "npm run dev --workspace=@codex-webapp/main-app",
+    "dev:container": "npm run dev --workspace=@codex-webapp/container-app",
+    "build": "npm run build --workspaces --if-present",
+    "build:main": "npm run build --workspace=@codex-webapp/main-app",
+    "build:container": "npm run build --workspace=@codex-webapp/container-app",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
   "engines": {
     "node": ">=18.17.0"
-  },
-  "scripts": {
-    "dev": "cross-env NODE_ENV=development CHOKIDAR_USEPOLLING=1 VITE_WATCH_USE_POLLING=1 tsx watch --exclude vite.config.ts.timestamp-* --exclude *.timestamp-*.mjs src/index.ts",
-    "dev:server": "tsx watch src/index.ts",
-    "build": "rimraf dist && npm run build:client && npm run build:server",
-    "build:client": "vite build",
-    "build:server": "tsc -p tsconfig.server.json",
-    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "start": "cross-env NODE_ENV=production node dist/server/index.js",
-    "preview": "cross-env NODE_ENV=production node dist/server/index.js",
-    "uninstall": "rimraf node_modules"
-  },
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.28",
-    "@openai/codex-sdk": "^0.46.0",
-    "better-sqlite3": "^11.10.0",
-    "cookie-parser": "^1.4.6",
-    "dotenv": "^17.2.3",
-    "express": "^4.19.2",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-markdown": "^9.0.1",
-    "remark-gfm": "^4.0.0",
-    "uuid": "^9.0.1",
-    "zod": "^3.23.8"
-  },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.9",
-    "@types/cookie-parser": "^1.4.5",
-    "@types/express": "^4.17.21",
-    "@types/node": "^20.11.30",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.3",
-    "@types/uuid": "^9.0.7",
-    "@vitejs/plugin-react": "^4.3.2",
-    "cross-env": "^7.0.3",
-    "rimraf": "^5.0.5",
-    "tsx": "^4.7.2",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.0"
   }
 }
