@@ -143,6 +143,13 @@ class CodexManager implements IAgent {
     }
 
     const workspaceDirectory = ensureWorkspaceDirectory(session.id);
+
+    // DEBUG: Log environment
+    console.log('[DEBUG] process.env.HOME:', process.env.HOME);
+    console.log('[DEBUG] process.env.USER:', process.env.USER);
+    console.log('[DEBUG] process.env.OPENAI_API_KEY:', process.env.OPENAI_API_KEY);
+    console.log('[DEBUG] process.env.CODEX_API_KEY:', process.env.CODEX_API_KEY);
+
     const codex = await this.getCodex();
 
     let thread: Thread;

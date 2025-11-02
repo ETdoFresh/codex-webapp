@@ -32,7 +32,10 @@
       "Read(//c/Users/etgarcia/OneDrive/Documents/ShareX/Screenshots/2025-10/**)",
       "Bash(tasklist:*)",
       "Bash(findstr:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(chmod:*)",
+      "mcp__chrome-devtools__get_network_request",
+      "Bash(/Users/etgarcia/temp/codex-webapp/node_modules/@openai/codex-sdk/vendor/aarch64-apple-darwin/codex/codex exec --experimental-json)"
     ],
     "deny": [],
     "ask": []

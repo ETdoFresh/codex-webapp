@@ -91,12 +91,12 @@ export const synchronizeUserAuthFiles = (userId: string): {
     writeAuthFile(filePath, decrypted);
   }
 
-  const env: Record<string, string> = {
-    HOME: homeDir,
-    USERPROFILE: homeDir,
-  };
+  // NOTE: Do NOT override HOME - let codex CLI use the real user's HOME
+  // where authentication files (.codex/auth.json, .claude/, etc.) are located
+  const env: Record<string, string> = {};
 
   if (process.platform === "win32") {
+    env.USERPROFILE = homeDir;
     env.APPDATA = path.join(homeDir, "AppData", "Roaming");
     ensureDirectory(env.APPDATA);
   }
