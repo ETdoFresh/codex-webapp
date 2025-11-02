@@ -270,13 +270,35 @@ export async function commitAndPushToGitHub(
     };
     const baseTreeSha = commitData.tree.sha;
 
-    // Get all files in workspace
-    const workspaceFiles = getAllFilesInDirectory(workspacePath);
-    if (workspaceFiles.length === 0) {
-      return { success: false, error: 'No files in workspace to commit' };
+    // Fetch the base tree to detect deletions
+    const baseTreeResponse = await fetch(
+      `https://api.github.com/repos/${owner}/${repoName}/git/trees/${baseTreeSha}?recursive=1`,
+      {
+        headers: {
+          Authorization: `Bearer ${token.accessToken}`,
+          Accept: 'application/vnd.github.v3+json',
+        },
+      },
+    );
+
+    if (!baseTreeResponse.ok) {
+      return { success: false, error: 'Failed to get base tree' };
     }
 
-    console.log(`[auto-commit] Found ${workspaceFiles.length} files in workspace:`, workspaceFiles.slice(0, 10));
+    const baseTreeData = (await baseTreeResponse.json()) as {
+      tree: Array<{ path: string; type: string; sha: string; mode: string }>;
+    };
+
+    // Get all files in workspace
+    const workspaceFiles = new Set(getAllFilesInDirectory(workspacePath));
+    console.log(`[auto-commit] Found ${workspaceFiles.size} files in workspace`);
+
+    // Track files in base tree
+    const baseTreeFiles = new Set(
+      baseTreeData.tree
+        .filter((entry) => entry.type === 'blob')
+        .map((entry) => entry.path)
+    );
 
     // Create blobs and tree entries for all workspace files
     const treeEntries: GitHubTreeEntry[] = [];
@@ -284,12 +306,6 @@ export async function commitAndPushToGitHub(
 
     for (const file of workspaceFiles) {
       const filePath = path.join(workspacePath, file);
-
-      if (!fs.existsSync(filePath)) {
-        console.log(`[auto-commit] Skipping deleted file: ${file}`);
-        continue; // File was deleted
-      }
-
       const content = fs.readFileSync(filePath, 'utf-8');
 
       // Create blob
@@ -330,6 +346,24 @@ export async function commitAndPushToGitHub(
       });
     }
 
+    // Detect and mark deleted files
+    const deletedFiles: string[] = [];
+    for (const baseFile of baseTreeFiles) {
+      if (!workspaceFiles.has(baseFile)) {
+        deletedFiles.push(baseFile);
+        treeEntries.push({
+          path: baseFile.replace(/\\/g, '/'),
+          mode: '100644',
+          type: 'blob',
+          sha: null as any, // null sha marks file for deletion
+        });
+      }
+    }
+
+    if (deletedFiles.length > 0) {
+      console.log(`[auto-commit] Detected ${deletedFiles.length} deleted files:`, deletedFiles);
+    }
+
     if (treeEntries.length === 0) {
       console.error(`[auto-commit] No blobs created. Failed files:`, failedFiles);
       return { success: false, error: `Failed to create blobs for files: ${failedFiles.join(', ')}` };
@@ -339,7 +373,7 @@ export async function commitAndPushToGitHub(
       console.warn(`[auto-commit] Some files failed to create blobs:`, failedFiles);
     }
 
-    console.log(`[auto-commit] Created ${treeEntries.length} blobs for commit`);
+    console.log(`[auto-commit] Created ${treeEntries.length} tree entries for commit`);
 
     // Create a new tree
     const treeResponse = await fetch(

@@ -144,7 +144,7 @@ class DroidCliManager implements IAgent {
     }
 
     // Grant the agent permission to mutate files within the workspace.
-    args.push('--auto', 'low');
+    args.push('--skip-permissions-unsafe');
     args.push('--cwd', options.workspaceDirectory);
 
     args.push(options.prompt);

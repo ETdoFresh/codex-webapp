@@ -332,6 +332,8 @@ function AuthenticatedApp() {
     gitRemoteUrl: string | null;
     gitBranch: string | null;
     autoCommit: boolean;
+    githubOwner?: string;
+    githubRepo?: string;
   } | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -611,10 +613,24 @@ function AuthenticatedApp() {
         if (canceled) {
           return;
         }
+        
+        // Extract GitHub owner/repo from gitRemoteUrl
+        let githubOwner: string | undefined;
+        let githubRepo: string | undefined;
+        if (settings.gitRemoteUrl) {
+          const match = settings.gitRemoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
+          if (match) {
+            githubOwner = match[1];
+            githubRepo = match[2];
+          }
+        }
+        
         setSessionSettings({
           gitRemoteUrl: settings.gitRemoteUrl,
           gitBranch: settings.gitBranch,
-          autoCommit: settings.autoCommit ?? false,
+          autoCommit: settings.autoCommit ?? true,
+          githubOwner,
+          githubRepo,
         });
       } catch (error) {
         if (!canceled) {
@@ -2594,11 +2610,39 @@ function AuthenticatedApp() {
                   </p>
                   {sessionSettings?.gitBranch && (
                     <>
+                      {sessionSettings.githubOwner && sessionSettings.githubRepo && (
+                        <p className="muted" style={{ marginTop: "0.5em" }}>
+                          Repo:{" "}
+                          <a
+                            href={`https://github.com/${sessionSettings.githubOwner}/${sessionSettings.githubRepo}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ textDecoration: "none" }}
+                          >
+                            <code style={{ fontSize: "0.9em", cursor: "pointer" }}>
+                              {sessionSettings.githubOwner}/{sessionSettings.githubRepo}
+                            </code>
+                          </a>
+                        </p>
+                      )}
                       <p className="muted" style={{ marginTop: "0.5em" }}>
                         Branch:{" "}
-                        <code style={{ fontSize: "0.9em" }}>
-                          {sessionSettings.gitBranch}
-                        </code>
+                        {sessionSettings.githubOwner && sessionSettings.githubRepo ? (
+                          <a
+                            href={`https://github.com/${sessionSettings.githubOwner}/${sessionSettings.githubRepo}/tree/${sessionSettings.gitBranch}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ textDecoration: "none" }}
+                          >
+                            <code style={{ fontSize: "0.9em", cursor: "pointer" }}>
+                              {sessionSettings.gitBranch}
+                            </code>
+                          </a>
+                        ) : (
+                          <code style={{ fontSize: "0.9em" }}>
+                            {sessionSettings.gitBranch}
+                          </code>
+                        )}
                       </p>
                       <p className="muted" style={{ marginTop: "0.5em" }}>
                         <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5em" }}>

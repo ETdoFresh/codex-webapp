@@ -1879,7 +1879,7 @@ class SQLiteDatabase implements IDatabase {
       buildSettings: JSON.stringify(input.buildSettings ?? {}),
       gitRemoteUrl: input.gitRemoteUrl ?? existing?.gitRemoteUrl ?? null,
       gitBranch: input.gitBranch ?? existing?.gitBranch ?? null,
-      autoCommit: input.autoCommit !== undefined ? (input.autoCommit ? 1 : 0) : (existing?.autoCommit ? 1 : 0),
+      autoCommit: input.autoCommit !== undefined ? (input.autoCommit ? 1 : 0) : (existing?.autoCommit ? 1 : 1),
       createdAt,
       updatedAt: now,
     });
