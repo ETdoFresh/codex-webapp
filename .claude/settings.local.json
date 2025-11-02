@@ -43,7 +43,9 @@
       "Bash(ps:*)",
       "Bash(git add:*)",
       "mcp__chrome-devtools__get_console_message",
-      "WebFetch(domain:docs.dokploy.com)"
+      "WebFetch(domain:docs.dokploy.com)",
+      "Bash(git commit:*)",
+      "Bash(node fetch-new-logs.js:*)"
     ],
     "deny": [],
     "ask": []

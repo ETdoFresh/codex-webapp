@@ -93,7 +93,32 @@ Fields:
    - POST `/application.saveEnvironment` - Sets environment variables
    - POST `/application.saveGithubProvider` - Configures GitHub source (if provided)
    - POST `/application.saveBuildType` - Sets build type (nixpacks or dockerfile)
+   - POST `/application.update` - Updates application settings
+   - POST `/domain.create` - **Automatically creates HTTPS domain with Let's Encrypt**
    - POST `/application.deploy` - Triggers deployment
+
+### Automatic Domain Configuration
+
+**Every new session automatically gets a domain with HTTPS:**
+
+- **Host**: Configurable via `DOKPLOY_DOMAIN_HOST` environment variable (default: `codex-webapp.etdofresh.com`)
+- **Path**: `/{sessionId}` - Unique path for each session
+- **HTTPS**: Automatically enabled
+- **SSL Certificate**: Let's Encrypt (auto-provisioned)
+- **Strip Path**: Enabled - The session ID path is stripped before forwarding to the app
+- **Port**: 3000 (default)
+
+**Service URL Format:**
+```
+https://{DOKPLOY_DOMAIN_HOST}/{sessionId}
+```
+
+**Example:**
+```
+https://codex-webapp.etdofresh.com/3dbb084b-ab96-46df-b90d-f1b130b245c7
+```
+
+The domain is created during service provisioning (in `serviceManager.ts:246-259`), before deployment begins.
 
 ### Build Types
 
@@ -210,6 +235,15 @@ Fixed in `serviceManager.ts:206-227`.
 **Solution**: Use `/Users/etgarcia/temp/codex-webapp/apps/main-app/var/chat.db`, not `codex-webapp.db`.
 
 ## Recent Changes
+
+### 2025-11-02: Automatic HTTPS Domain Configuration
+
+- **Added automatic domain creation** for every new session
+- All sessions now get HTTPS with Let's Encrypt automatically
+- Domain path uses `/{sessionId}` format for unique URLs
+- Strip path enabled by default for seamless app compatibility
+- Configurable via `DOKPLOY_DOMAIN_HOST` environment variable
+- Service URLs now use HTTPS format: `https://{host}/{sessionId}`
 
 ### 2025-11-02: Nixpacks Migration
 

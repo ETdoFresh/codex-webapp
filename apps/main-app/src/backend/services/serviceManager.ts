@@ -239,8 +239,27 @@ export async function createService(
       },
     });
 
-    // Generate service URL (assuming Dokploy pattern)
-    const serviceUrl = `${globalConfig.baseUrl.replace(/\/api$/, "")}/${sessionId}`;
+    // Configure domain with HTTPS and Let's Encrypt
+    const domainHost = process.env.DOKPLOY_DOMAIN_HOST || "codex-webapp.etdofresh.com";
+    console.log(`[SERVICE] Creating domain for ${sessionId} on ${domainHost}`);
+
+    await client.request({
+      method: "POST",
+      path: "/domain.create",
+      body: {
+        host: domainHost,
+        path: `/${sessionId}`,
+        port: 3000,
+        https: true,
+        certificateType: "letsencrypt",
+        applicationId,
+        domainType: "application",
+        stripPath: true,
+      },
+    });
+
+    // Generate service URL with the configured domain
+    const serviceUrl = `https://${domainHost}/${sessionId}`;
 
     // Update service record with success
     database.upsertSessionService({
