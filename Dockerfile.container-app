@@ -1,0 +1,45 @@
+FROM node:20-slim
+
+# Install basic tools
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up /editor directory for the container app
+WORKDIR /editor
+
+# Copy monorepo package files
+COPY package*.json ./
+COPY apps/container-app/package*.json ./apps/container-app/
+COPY apps/shared/package*.json ./apps/shared/
+
+# Install ALL dependencies (including dev dependencies for build)
+RUN npm ci
+
+# Copy all source code
+COPY apps/container-app ./apps/container-app
+COPY apps/shared ./apps/shared
+
+# Build the container-app workspace
+RUN npm run build --workspace=@codex-webapp/container-app
+
+# Remove dev dependencies to reduce image size
+RUN npm ci --production
+
+# Create workspace directory for user's cloned repo
+RUN mkdir -p /workspace
+
+# Make init script executable
+RUN chmod +x /editor/apps/container-app/scripts/container-init.sh
+
+# Expose port for container app
+EXPOSE 3001
+
+# Set environment
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV WORKSPACE_PATH=/workspace
+
+# Start with init script (clones repo) then start app
+CMD ["/bin/bash", "-c", "/editor/apps/container-app/scripts/container-init.sh && node /editor/apps/container-app/dist/server/index.js"]

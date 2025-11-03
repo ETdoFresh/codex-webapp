@@ -155,18 +155,18 @@ export async function createService(
         repository: "codex-webapp",
         githubId: globalConfig.githubId || null,
         branch: "main",
-        buildPath: "apps/container-app",
+        buildPath: "", // Use root of repo to access full monorepo structure
       },
     });
 
-    // Use Dockerfile build type pointing to container-app Dockerfile
+    // Use Dockerfile build type pointing to root-level container-app Dockerfile
     await client.request({
       method: "POST",
       path: "/application.saveBuildType",
       body: {
         applicationId,
         buildType: "dockerfile",
-        dockerfile: "Dockerfile",
+        dockerfile: "Dockerfile.container-app", // Root-level Dockerfile for monorepo build
         dockerContextPath: "./",
         dockerBuildStage: "",
       },
