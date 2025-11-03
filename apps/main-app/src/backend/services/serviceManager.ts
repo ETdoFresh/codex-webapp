@@ -370,3 +370,70 @@ export async function getServiceLogs(
 
   return logs?.logs || "";
 }
+
+/**
+ * Gets deployment build logs for a service
+ */
+export async function getDeploymentLogs(
+  sessionId: string,
+  globalConfig: DeployConfig,
+  apiKey: string,
+): Promise<{ logs: string; status: string; deploymentId?: string }> {
+  const service = database.getSessionService(sessionId);
+  if (!service || !service.dokployAppId) {
+    throw new Error("Service not found");
+  }
+
+  const client = createDokployClient(globalConfig, apiKey);
+
+  // Get application details including deployments
+  const appData = await client.request<{
+    deployments?: Array<{
+      deploymentId: string;
+      status: string;
+      logPath?: string;
+      createdAt: string;
+    }>;
+  }>({
+    method: "GET",
+    path: "/application.one",
+    query: {
+      applicationId: service.dokployAppId,
+    },
+  });
+
+  // Get the most recent deployment
+  const deployments = appData.deployments || [];
+  if (deployments.length === 0) {
+    return { logs: "No deployments found", status: "none" };
+  }
+
+  // Sort by creation date to get the latest
+  const latestDeployment = deployments.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )[0];
+
+  // Try to fetch deployment logs
+  try {
+    const logsData = await client.request<{ logs?: string }>({
+      method: "GET",
+      path: "/deployment.logs",
+      query: {
+        deploymentId: latestDeployment.deploymentId,
+      },
+    });
+
+    return {
+      logs: logsData?.logs || "Logs not available yet",
+      status: latestDeployment.status,
+      deploymentId: latestDeployment.deploymentId,
+    };
+  } catch (error) {
+    // Deployment logs endpoint often returns 404, fallback to logPath info
+    return {
+      logs: `Deployment ${latestDeployment.status}. Log path: ${latestDeployment.logPath || "Not available"}`,
+      status: latestDeployment.status,
+      deploymentId: latestDeployment.deploymentId,
+    };
+  }
+}

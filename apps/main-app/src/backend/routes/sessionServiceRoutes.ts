@@ -9,6 +9,7 @@ import {
   startService,
   deleteService,
   getServiceLogs,
+  getDeploymentLogs,
 } from "../services/serviceManager";
 import { exportAuthFilesAsEnvVars } from "../services/userAuthManager";
 import { decryptSecret } from "../utils/secretVault";
@@ -147,6 +148,23 @@ router.get(
     const logs = await getServiceLogs(sessionId, config, apiKey);
 
     res.json({ logs });
+  }),
+);
+
+// GET /api/sessions/:id/service/deployment-logs
+router.get(
+  "/sessions/:id/service/deployment-logs",
+  asyncHandler(async (req, res) => {
+    const sessionId = req.params.id;
+    const userId = req.user!.id;
+
+    verifySessionOwnership(sessionId, userId);
+
+    const { config, apiKey } = getDeployConfigAndKey();
+
+    const result = await getDeploymentLogs(sessionId, config, apiKey);
+
+    res.json(result);
   }),
 );
 

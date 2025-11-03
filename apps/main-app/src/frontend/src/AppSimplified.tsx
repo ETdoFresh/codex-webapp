@@ -7,6 +7,7 @@ import AdminPanel from "./components/AdminPanel";
 import DokployPanel from "./components/DokployPanel";
 import GitHubConnectionPanel from "./components/GitHubConnectionPanel";
 import NewSessionModal from "./components/NewSessionModal";
+import DeploymentLogs from "./components/DeploymentLogs";
 import { createSession, deleteSession, fetchSessions } from "./api/client";
 import type { Session } from "@codex-webapp/shared";
 
@@ -285,14 +286,35 @@ function AppSimplified() {
             </div>
           ) : activeSession && isServiceReady ? (
             <ServiceIframe serviceUrl={serviceUrl} sessionId={activeSession.id} />
+          ) : activeSession && serviceStatus?.status === "creating" ? (
+            <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+              <div style={{ padding: "1.5rem", borderBottom: "1px solid var(--color-border)" }}>
+                <h3 style={{ margin: "0 0 0.5rem 0" }}>
+                  ⏳ {getStatusMessage(serviceStatus?.status)}
+                </h3>
+                <p style={{ margin: "0", opacity: 0.8 }}>
+                  Your session service is being built and deployed...
+                </p>
+              </div>
+              <div style={{ flex: 1, overflow: "hidden" }}>
+                <DeploymentLogs
+                  sessionId={activeSession.id}
+                  onComplete={() => {
+                    // Refresh service status when deployment completes
+                    setTimeout(() => {
+                      window.location.reload();
+                    }, 2000);
+                  }}
+                />
+              </div>
+            </div>
           ) : activeSession ? (
             <div className="service-loading">
               <h3>
-                {serviceStatus?.status === "creating" && "⏳ "}
                 {serviceStatus?.status === "error" && "❌ "}
                 {getStatusMessage(serviceStatus?.status)}
               </h3>
-              <p>Your session service is being provisioned.</p>
+              <p>Your session service status is being checked.</p>
               <div style={{ marginTop: "1rem", fontSize: "0.9rem", opacity: 0.8 }}>
                 <p><strong>Status:</strong> {serviceStatus?.status || "unknown"}</p>
                 {serviceUrl && <p><strong>URL:</strong> {serviceUrl}</p>}
@@ -302,11 +324,6 @@ function AppSimplified() {
                   </p>
                 )}
               </div>
-              {serviceStatus?.status === "creating" && (
-                <p style={{ marginTop: "1rem", fontStyle: "italic" }}>
-                  Please wait while we set up your environment...
-                </p>
-              )}
             </div>
           ) : (
             <div className="service-loading">
