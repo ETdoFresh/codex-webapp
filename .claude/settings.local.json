@@ -49,7 +49,8 @@
       "Bash(lsof:*)",
       "Bash(xargs kill:*)",
       "Bash(find:*)",
-      "Bash(npm run typecheck:*)"
+      "Bash(npm run typecheck:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
