@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer as createHttpServer } from "node:http";
 import express from "express";
-import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { initializeMainAppClient, shutdownMainAppClient } from "./backend/services/mainAppClient.js";
 
 const DEFAULT_PORT = 3001;
@@ -15,7 +14,7 @@ const clientDistPath = path.resolve(repoRoot, "dist/client");
 const indexHtmlPath = path.resolve(frontendRoot, "index.html");
 const isProduction = process.env.NODE_ENV === "production";
 
-async function registerFrontendMiddleware(app: express.Application): Promise<ViteDevServer | null> {
+async function registerFrontendMiddleware(app: express.Application): Promise<any> {
   if (isProduction) {
     // Serve static files in production
     console.log(`[container-app] serving static frontend from ${clientDistPath}`);
@@ -39,8 +38,9 @@ async function registerFrontendMiddleware(app: express.Application): Promise<Vit
     return null;
   }
 
-  // Development mode with Vite
+  // Development mode with Vite (dynamic import to avoid production dependency)
   console.log("[container-app] starting Vite dev server");
+  const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     server: { middlewareMode: true },
     appType: "spa",
