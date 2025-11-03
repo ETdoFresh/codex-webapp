@@ -72,9 +72,14 @@ async function start() {
   const app = express();
   app.disable("x-powered-by");
 
-  // Initialize connection to main app
-  console.log("[container-app] Initializing main app client");
-  initializeMainAppClient();
+  // Initialize connection to main app (optional - only if MAIN_APP_URL is publicly accessible)
+  const mainAppUrl = process.env.MAIN_APP_URL;
+  if (mainAppUrl && !mainAppUrl.includes("localhost") && !mainAppUrl.includes("127.0.0.1")) {
+    console.log("[container-app] Initializing main app client");
+    initializeMainAppClient();
+  } else {
+    console.log("[container-app] Skipping main app client initialization (no public MAIN_APP_URL)");
+  }
 
   // Register backend routes
   const { default: registerBackend } = await import("./backend/index.js");

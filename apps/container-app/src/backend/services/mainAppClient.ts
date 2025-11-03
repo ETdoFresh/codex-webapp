@@ -2,8 +2,8 @@ import fetch from "node-fetch";
 import { WebSocket } from "ws";
 import type { Message, WebhookMessagePayload, StreamChunk } from "@codex-webapp/shared";
 
-const SESSION_ID = process.env.SESSION_ID!;
-const SESSION_TOKEN = process.env.SESSION_TOKEN!;
+const SESSION_ID = process.env.SESSION_ID || "";
+const SESSION_TOKEN = process.env.SESSION_TOKEN || "";
 const MAIN_APP_URL = process.env.MAIN_APP_URL || "http://localhost:3000";
 const MAIN_APP_WS_URL = process.env.MAIN_APP_WS_URL || MAIN_APP_URL.replace(/^http/, "ws");
 
@@ -16,6 +16,10 @@ let wsReconnectTimer: NodeJS.Timeout | null = null;
 export async function postMessageToMainApp(
   payload: WebhookMessagePayload,
 ): Promise<{ messageId: string; createdAt: string }> {
+  if (!SESSION_ID || !SESSION_TOKEN) {
+    throw new Error("Cannot post message to main app: SESSION_ID or SESSION_TOKEN not set");
+  }
+
   const url = `${MAIN_APP_URL}/api/container-webhooks/${SESSION_ID}/message`;
 
   console.log(`[Container] Posting message to main app: ${url}`);
@@ -45,6 +49,11 @@ export async function postMessageToMainApp(
  * Fetch message history from the main app
  */
 export async function fetchMessagesFromMainApp(): Promise<Message[]> {
+  if (!SESSION_ID || !SESSION_TOKEN) {
+    console.warn("[Container] Cannot fetch messages: SESSION_ID or SESSION_TOKEN not set");
+    return [];
+  }
+
   const url = `${MAIN_APP_URL}/api/container-webhooks/${SESSION_ID}/messages`;
 
   console.log(`[Container] Fetching messages from main app: ${url}`);
@@ -67,7 +76,12 @@ export async function fetchMessagesFromMainApp(): Promise<Message[]> {
 /**
  * Connect to the main app WebSocket for real-time streaming
  */
-export function connectToMainAppWebSocket(): WebSocket {
+export function connectToMainAppWebSocket(): WebSocket | null {
+  if (!SESSION_ID || !SESSION_TOKEN) {
+    console.warn("[Container] Cannot connect to main app: SESSION_ID or SESSION_TOKEN not set");
+    return null;
+  }
+
   if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
     return wsConnection;
   }
@@ -120,6 +134,11 @@ export function connectToMainAppWebSocket(): WebSocket {
  */
 export function streamChunkToMainApp(chunk: StreamChunk): void {
   const ws = connectToMainAppWebSocket();
+
+  if (!ws) {
+    // No main app connection configured
+    return;
+  }
 
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
