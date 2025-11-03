@@ -276,14 +276,8 @@ router.post(
       }
     }
 
-    // Save session settings if not already saved
-    if (
-      !settingsSaved &&
-      (body.githubRepo ||
-        body.customEnvVars ||
-        body.dockerfilePath ||
-        body.buildSettings)
-    ) {
+    // Always save session settings (with defaults if not already saved)
+    if (!settingsSaved) {
       database.upsertSessionSettings({
         sessionId: session.id,
         githubRepo: body.githubRepo || null,
