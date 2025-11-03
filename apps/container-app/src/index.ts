@@ -7,12 +7,14 @@ import express from "express";
 import { initializeMainAppClient, shutdownMainAppClient } from "./backend/services/mainAppClient.js";
 
 const DEFAULT_PORT = 3001;
+const isProduction = process.env.NODE_ENV === "production";
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(dirname, "..");
+// In production, we run from dist/server, so go up 2 levels to get to app root
+// In dev, we run from src, so go up 1 level
+const repoRoot = isProduction ? path.resolve(dirname, "../..") : path.resolve(dirname, "..");
 const frontendRoot = path.resolve(dirname, "frontend");
 const clientDistPath = path.resolve(repoRoot, "dist/client");
 const indexHtmlPath = path.resolve(frontendRoot, "index.html");
-const isProduction = process.env.NODE_ENV === "production";
 
 async function registerFrontendMiddleware(app: express.Application): Promise<any> {
   if (isProduction) {
