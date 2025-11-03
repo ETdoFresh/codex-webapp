@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createServer as createHttpServer } from "node:http";
 import express from "express";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
-import { initializeMainAppClient, shutdownMainAppClient } from "./backend/services/mainAppClient";
+import { initializeMainAppClient, shutdownMainAppClient } from "./backend/services/mainAppClient.js";
 
 const DEFAULT_PORT = 3001;
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -84,7 +84,7 @@ async function start() {
   const vite = await registerFrontendMiddleware(app);
 
   // Error handler
-  app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error("[container-app] Error:", error);
     if (!res.headersSent) {
       res.status(500).json({ error: "InternalServerError" });

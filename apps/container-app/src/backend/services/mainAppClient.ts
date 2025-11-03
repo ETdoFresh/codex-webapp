@@ -123,7 +123,6 @@ export function streamChunkToMainApp(chunk: StreamChunk): void {
 
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
-      type: "stream_chunk",
       ...chunk,
     }));
   } else {

@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { validateSessionContext } from "../middleware/validateToken";
+import { validateSessionContext } from "../middleware/validateToken.js";
 
 const router = Router();
 router.use(validateSessionContext);
@@ -14,7 +14,7 @@ const WORKSPACE_PATH = process.env.WORKSPACE_PATH || "/workspace";
  * GET /api/workspace/files
  * List all files in the workspace
  */
-router.get("/workspace/files", async (req, res) => {
+router.get("/workspace/files", async (_req, res) => {
   try {
     const files = await listWorkspaceFiles(WORKSPACE_PATH);
     res.json({ files });
@@ -31,7 +31,7 @@ router.get("/workspace/files", async (req, res) => {
  */
 router.get("/workspace/files/*", async (req, res) => {
   try {
-    const filePath = req.params[0];
+    const filePath = (req.params as string[])[0];
     if (!filePath) {
       res.status(400).json({ error: "File path is required" });
       return;
@@ -73,7 +73,7 @@ router.get("/workspace/files/*", async (req, res) => {
  */
 router.put("/workspace/files/*", async (req, res) => {
   try {
-    const filePath = req.params[0];
+    const filePath = (req.params as string[])[0];
     if (!filePath) {
       res.status(400).json({ error: "File path is required" });
       return;

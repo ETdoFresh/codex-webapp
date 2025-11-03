@@ -39,7 +39,7 @@ function App() {
   const [editorValue, setEditorValue] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const { sendToMainApp } = useMainAppBridge((message) => {
+  const {  } = useMainAppBridge((message) => {
     console.log("[Container] Received message from main app:", message);
   });
 

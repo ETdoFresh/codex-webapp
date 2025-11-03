@@ -47,7 +47,9 @@
       "Bash(git commit:*)",
       "Bash(node fetch-new-logs.js:*)",
       "Bash(lsof:*)",
-      "Bash(xargs kill:*)"
+      "Bash(xargs kill:*)",
+      "Bash(find:*)",
+      "Bash(npm run typecheck:*)"
     ],
     "deny": [],
     "ask": []

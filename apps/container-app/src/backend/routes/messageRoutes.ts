@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { validateSessionContext } from "../middleware/validateToken";
-import { fetchMessagesFromMainApp, postMessageToMainApp } from "../services/mainAppClient";
-import { runAgent } from "../services/agentRunner";
+import { validateSessionContext } from "../middleware/validateToken.js";
+import { fetchMessagesFromMainApp, postMessageToMainApp } from "../services/mainAppClient.js";
+import { runAgent } from "../services/agentRunner.js";
 
 const router = Router();
 
@@ -20,7 +20,7 @@ const sendMessageSchema = z.object({
  * GET /api/messages
  * Fetch all messages for this session from main app
  */
-router.get("/messages", async (req, res) => {
+router.get("/messages", async (_req, res) => {
   try {
     const messages = await fetchMessagesFromMainApp();
     res.json(messages);

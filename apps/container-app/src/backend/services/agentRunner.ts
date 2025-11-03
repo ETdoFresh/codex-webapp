@@ -1,10 +1,9 @@
 import { spawn } from "node:child_process";
 import * as readline from "node:readline";
-import type { StreamChunk, TurnItem } from "@codex-webapp/shared";
-import { streamChunkToMainApp, postMessageToMainApp } from "./mainAppClient";
+import type { TurnItem } from "@codex-webapp/shared";
+import { streamChunkToMainApp, postMessageToMainApp } from "./mainAppClient.js";
 
 const WORKSPACE_PATH = process.env.WORKSPACE_PATH || "/workspace";
-const SESSION_ID = process.env.SESSION_ID || "unknown";
 
 type AgentProvider = "CodexSDK" | "ClaudeCodeSDK" | "DroidCLI";
 
@@ -109,7 +108,7 @@ export async function runAgent(options: RunAgentOptions): Promise<void> {
 async function runCodexAgent(
   model: string,
   userMessage: string,
-  reasoningEffort: string,
+  _reasoningEffort: string,
   onContent: (content: string) => void,
   onItem: (item: TurnItem) => void,
 ): Promise<void> {
@@ -124,9 +123,9 @@ async function runCodexAgent(
 
     const codex = new Codex(codexOptions);
 
-    const sandboxMode = process.platform === 'win32' ? 'danger-full-access' : 'workspace-write';
+    const sandboxMode = process.platform === 'win32' ? 'danger-full-access' : 'workspace-write' as const;
 
-    const threadOptions = {
+    const threadOptions: any = {
       sandboxMode,
       workingDirectory: WORKSPACE_PATH,
       skipGitRepoCheck: true,
@@ -165,7 +164,7 @@ async function runCodexAgent(
 async function runClaudeAgent(
   model: string,
   userMessage: string,
-  reasoningEffort: string,
+  _reasoningEffort: string,
   onContent: (content: string) => void,
   onItem: (item: TurnItem) => void,
 ): Promise<void> {

@@ -38,3 +38,7 @@ export type ServiceToMainMessage =
     };
 
 export type BridgeMessage = MainToServiceMessage | ServiceToMainMessage;
+
+// Aliases for container-app (same as service-app)
+export type MainToContainerMessage = MainToServiceMessage;
+export type ContainerToMainMessage = ServiceToMainMessage;

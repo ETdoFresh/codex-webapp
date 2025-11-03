@@ -15,7 +15,7 @@ export function registerBackend(app: Application): void {
   app.use(previewRoutes);
 
   // Error handler
-  app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error("[Container] Error:", error);
     
     if (!res.headersSent) {

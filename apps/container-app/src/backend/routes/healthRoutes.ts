@@ -6,7 +6,7 @@ const router = Router();
  * GET /health
  * Health check endpoint for container monitoring
  */
-router.get("/health", (req, res) => {
+router.get("/health", (_req, res) => {
   res.json({
     status: "ok",
     sessionId: process.env.SESSION_ID,
