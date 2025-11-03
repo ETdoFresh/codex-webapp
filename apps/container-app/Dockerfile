@@ -11,17 +11,24 @@ WORKDIR /editor
 
 # Copy package files
 COPY package*.json ./
-RUN npm ci --production
 
-# Copy built application
-COPY dist ./dist
+# Install ALL dependencies (including dev dependencies for build)
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Remove dev dependencies to reduce image size
+RUN npm ci --production
 
 # Create workspace directory for user's cloned repo
 RUN mkdir -p /workspace
 
-# Copy and set up initialization script
-COPY scripts/container-init.sh /editor/init.sh
-RUN chmod +x /editor/init.sh
+# Make init script executable
+RUN chmod +x /editor/scripts/container-init.sh
 
 # Expose port for container app
 EXPOSE 3001
@@ -32,4 +39,4 @@ ENV PORT=3001
 ENV WORKSPACE_PATH=/workspace
 
 # Start with init script (clones repo) then start app
-CMD ["/bin/bash", "-c", "/editor/init.sh && node /editor/dist/server/index.js"]
+CMD ["/bin/bash", "-c", "/editor/scripts/container-init.sh && node /editor/dist/server/index.js"]
