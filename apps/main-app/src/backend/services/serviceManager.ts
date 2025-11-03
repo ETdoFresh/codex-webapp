@@ -121,6 +121,11 @@ export async function createService(
       ...customEnvVars,
     };
 
+    // Add GitHub repository URL if provided
+    if (settings.githubRepo) {
+      envVars.GITHUB_REPO_URL = settings.githubRepo;
+    }
+
     // Convert env vars to Dokploy format
     const envString = Object.entries(envVars)
       .map(([key, value]) => `${key}=${value}`)
@@ -137,95 +142,35 @@ export async function createService(
       },
     });
 
-    // Configure build settings if GitHub repo is provided
-    if (settings.githubRepo) {
-      // Extract owner and repository name from GitHub URL
-      // Format: https://github.com/owner/repo or git@github.com:owner/repo.git
-      const githubUrlMatch = settings.githubRepo.match(/github\.com[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
-      const owner = githubUrlMatch?.[1];
-      const repository = githubUrlMatch?.[2];
+    // Always configure container-app from codex-webapp repository
+    // The user's repo URL is passed as GITHUB_REPO_URL env var (set above)
+    console.log('[SERVICE] Configuring container-app from codex-webapp repository');
 
-      if (!owner || !repository) {
-        throw new Error(`Invalid GitHub repository URL format: ${settings.githubRepo}`);
-      }
-
-      await client.request({
-        method: "POST",
-        path: "/application.saveGithubProvider",
-        body: {
-          applicationId,
-          owner,
-          repository,
-          githubId: globalConfig.githubId || null,
-          branch: buildSettings.branch || "main",
-          buildPath: buildSettings.buildPath || "./",
-        },
-      });
-
-      // Set build type to dockerfile with default Dockerfile for TypeScript
-      const dockerfileLines = [
-        "FROM node:20-slim",
-        "WORKDIR /app",
-        "",
-        "# Copy repository contents",
-        "COPY . .",
-        "",
-        "# If package.json doesn't exist, create a simple TypeScript Hello World app",
-        "RUN if [ ! -f package.json ]; then \\",
-        "  echo '{' > package.json && \\",
-        "  echo '  \"name\": \"hello-world-typescript\",' >> package.json && \\",
-        "  echo '  \"version\": \"1.0.0\",' >> package.json && \\",
-        "  echo '  \"scripts\": {' >> package.json && \\",
-        "  echo '    \"dev\": \"ts-node src/index.ts\",' >> package.json && \\",
-        "  echo '    \"start\": \"ts-node src/index.ts\"' >> package.json && \\",
-        "  echo '  },' >> package.json && \\",
-        "  echo '  \"dependencies\": {' >> package.json && \\",
-        "  echo '    \"express\": \"^4.18.2\",' >> package.json && \\",
-        "  echo '    \"@types/express\": \"^4.17.17\",' >> package.json && \\",
-        "  echo '    \"typescript\": \"^5.0.0\",' >> package.json && \\",
-        "  echo '    \"ts-node\": \"^10.9.1\"' >> package.json && \\",
-        "  echo '  }' >> package.json && \\",
-        "  echo '}' >> package.json && \\",
-        "  mkdir -p src && \\",
-        "  echo \"import express from 'express';\" > src/index.ts && \\",
-        "  echo \"const app = express();\" >> src/index.ts && \\",
-        "  echo \"const port = process.env.PORT || 3000;\" >> src/index.ts && \\",
-        "  echo \"app.get('/', (req, res) => {\" >> src/index.ts && \\",
-        "  echo \"  res.send('<h1>Hello World from TypeScript!</h1><p>This is a generated app.</p>');\" >> src/index.ts && \\",
-        "  echo \"});\" >> src/index.ts && \\",
-        "  echo \"app.listen(port, () => console.log(\\\\\\`Server running on port \\\\\\${port}\\\\\\`));\" >> src/index.ts; \\",
-        "fi",
-        "",
-        "# Install dependencies",
-        "RUN npm install",
-        "",
-        "CMD [\"npm\", \"run\", \"dev\"]"
-      ];
-      const defaultDockerfile = dockerfileLines.join("\n");
-
-      // Only pass dockerfile field if user explicitly provided a path
-      // Otherwise, let Dokploy use default behavior or nixpacks
-      const buildTypeBody: Record<string, unknown> = {
+    await client.request({
+      method: "POST",
+      path: "/application.saveGithubProvider",
+      body: {
         applicationId,
+        owner: "ETdoFresh",
+        repository: "codex-webapp",
+        githubId: globalConfig.githubId || null,
+        branch: "main",
+        buildPath: "apps/container-app",
+      },
+    });
+
+    // Use Dockerfile build type pointing to container-app Dockerfile
+    await client.request({
+      method: "POST",
+      path: "/application.saveBuildType",
+      body: {
+        applicationId,
+        buildType: "dockerfile",
+        dockerfile: "Dockerfile",
         dockerContextPath: "./",
         dockerBuildStage: "",
-      };
-
-      if (settings.dockerfilePath) {
-        // User provided a custom Dockerfile path
-        buildTypeBody.buildType = "dockerfile";
-        buildTypeBody.dockerfile = settings.dockerfilePath;
-      } else {
-        // Use nixpacks which will auto-detect and build the app
-        buildTypeBody.buildType = "nixpacks";
-      }
-
-      await client.request({
-        method: "POST",
-        path: "/application.saveBuildType",
-        body: buildTypeBody,
-      });
-    }
+      },
+    });
 
     // Configure general settings
     await client.request({
@@ -249,7 +194,7 @@ export async function createService(
       body: {
         host: domainHost,
         path: `/${sessionId}`,
-        port: 3000,
+        port: 3001, // container-app runs on port 3001
         https: true,
         certificateType: "letsencrypt",
         applicationId,
